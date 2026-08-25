@@ -609,7 +609,7 @@ describe("GPT-Live gateway relay bridge", () => {
     const onClose = vi.fn();
     const bridge = new OpenAIQuicksilverGatewayBridge({
       providerConfig: {},
-      model: "gpt-live-1-codex",
+      model: "gpt-live-test-canary",
       voice: "marin",
       audioFormat: { encoding: "pcm16", sampleRateHz: 24_000, channels: 1 },
       onAudio: vi.fn(),
@@ -810,7 +810,7 @@ describe("GPT-Live gateway relay bridge", () => {
     const closePeer = vi.fn();
     const bridge = new OpenAIQuicksilverGatewayBridge({
       providerConfig: {},
-      model: "gpt-live-1-codex",
+      model: "gpt-live-test-canary",
       voice: "marin",
       audioFormat: { encoding: "pcm16", sampleRateHz: 24_000, channels: 1 },
       onAudio: vi.fn(),
@@ -874,7 +874,7 @@ describe("GPT-Live gateway relay bridge", () => {
     );
     const bridge = new OpenAIQuicksilverGatewayBridge({
       providerConfig: {},
-      model: "gpt-live-1-codex",
+      model: "gpt-live-test-canary",
       voice: "marin",
       instructions: "Speak briefly.",
       audioFormat: { encoding: "pcm16", sampleRateHz: 24_000, channels: 1 },
@@ -982,7 +982,7 @@ describe("GPT-Live gateway relay bridge", () => {
     const onError = vi.fn();
     const bridge = new OpenAIQuicksilverGatewayBridge({
       providerConfig: {},
-      model: "gpt-live-1-codex",
+      model: "gpt-live-test-canary",
       voice: "marin",
       audioFormat: { encoding: "pcm16", sampleRateHz: 24_000, channels: 1 },
       onAudio: vi.fn(),

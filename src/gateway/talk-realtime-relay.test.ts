@@ -1785,7 +1785,6 @@ describe("talk realtime gateway relay", () => {
       autoRespondToAudio: true,
       interruptResponseOnInputAudio: true,
     });
-
     const readyPayload = findEventPayload(events, (payload) => payload.type === "ready");
     expectRecordFields(readyPayload, {
       relaySessionId: session.relaySessionId,

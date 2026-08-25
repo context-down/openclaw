@@ -88,7 +88,7 @@ function createHarness(params?: {
   const logger = { warn: vi.fn() };
   const bridge = new OpenAIQuicksilverVoiceBridge({
     providerConfig: {},
-    model: "gpt-live-1-codex",
+    model: "gpt-live-test-canary",
     voice: "spruce",
     instructions: "Use delegation for real work.",
     audioFormat:
@@ -132,7 +132,9 @@ describe("OpenAIQuicksilverVoiceBridge", () => {
     await harness.bridge.connect();
 
     expect(harness.connections).toHaveLength(1);
-    expect(harness.connections[0]?.url).toBe("wss://api.openai.com/v1/live?model=gpt-live-1-codex");
+    expect(harness.connections[0]?.url).toBe(
+      "wss://api.openai.com/v1/live?model=gpt-live-test-canary",
+    );
     expect(harness.connections[0]?.options.headers).toMatchObject({
       Authorization: "Bearer test-key",
       "OpenAI-Alpha": "quicksilver=v2",
@@ -256,7 +258,7 @@ describe("OpenAIQuicksilverVoiceBridge", () => {
     const sockets: FakeSocket[] = [];
     const bridge = new OpenAIQuicksilverVoiceBridge({
       providerConfig: {},
-      model: "gpt-live-1-codex",
+      model: "gpt-live-test-canary",
       audioFormat: { encoding: "pcm16", sampleRateHz: 24000, channels: 1 },
       resolveAuth: async () => ({ type: "api-key", token: "test-key" }),
       webSocketFactory: (_url, _options) => {

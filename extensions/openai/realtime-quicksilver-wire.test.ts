@@ -103,7 +103,7 @@ describe("Realtime call creation", () => {
       return createCallResponse("v=answer\r\n", `rtc_${requests.length}`);
     }) as unknown as typeof fetch;
     const session = buildOpenAIQuicksilverSession({
-      model: "gpt-live-1-codex",
+      model: "gpt-live-test-canary",
       instructions: "Speak briefly.",
       voice: "spruce",
     });
@@ -263,7 +263,7 @@ describe("Realtime call creation", () => {
       auth: { type: "api-key", token: "platform-key" },
       requestIds: createRequestIds("error"),
       sdp: "v=offer\r\n",
-      session: buildOpenAIQuicksilverSession({ model: "gpt-live-1-codex" }),
+      session: buildOpenAIQuicksilverSession({ model: "gpt-live-test-canary" }),
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     await expect(promise).rejects.toMatchObject({
@@ -273,10 +273,30 @@ describe("Realtime call creation", () => {
     });
   });
 
+  it("redacts an opaque model echoed by the provider", async () => {
+    const model = "gpt-live-test-canary";
+    const fetchImpl = vi.fn(
+      async () => new Response(`provider rejected ${model} for this route`, { status: 422 }),
+    );
+    const promise = createOpenAIQuicksilverCall({
+      auth: { type: "api-key", token: "platform-key" },
+      requestIds: createRequestIds("model-redaction"),
+      sdp: "v=offer\r\n",
+      session: buildOpenAIQuicksilverSession({ model }),
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    await expect(promise).rejects.toMatchObject({
+      name: "OpenAIQuicksilverCallError",
+      status: 422,
+      message: expect.not.stringContaining(model),
+    });
+  });
+
   it.each([
     {
       name: "GPT-Live",
-      model: "gpt-live-1-codex",
+      model: "gpt-live-test-canary",
       expectedMessage: "GPT-Live call creation failed (429)",
     },
     {
@@ -359,7 +379,7 @@ describe("Realtime call creation", () => {
         auth: { type: "oauth", token: "oauth-token", accountId: "acct-1" },
         requestIds: createRequestIds("header-fallback"),
         sdp: "v=offer\r\n",
-        session: buildOpenAIQuicksilverSession({ model: "gpt-live-1-codex" }),
+        session: buildOpenAIQuicksilverSession({ model: "gpt-live-test-canary" }),
         fetchImpl: fetchImpl as unknown as typeof fetch,
       }),
     ).resolves.toMatchObject({ callId });
@@ -374,7 +394,7 @@ describe("Realtime call creation", () => {
         auth: { type: "oauth", token: "oauth-token", accountId: "acct-1" },
         requestIds: createRequestIds("uuid-location"),
         sdp: "v=offer\r\n",
-        session: buildOpenAIQuicksilverSession({ model: "gpt-live-1-codex" }),
+        session: buildOpenAIQuicksilverSession({ model: "gpt-live-test-canary" }),
         fetchImpl: fetchImpl as unknown as typeof fetch,
       }),
     ).resolves.toMatchObject({
@@ -396,7 +416,7 @@ describe("Realtime call creation", () => {
         auth: { type: "oauth", token: "oauth-token", accountId: "acct-1" },
         requestIds: createRequestIds("empty-answer"),
         sdp: "v=offer\r\n",
-        session: buildOpenAIQuicksilverSession({ model: "gpt-live-1-codex" }),
+        session: buildOpenAIQuicksilverSession({ model: "gpt-live-test-canary" }),
         fetchImpl: fetchImpl as unknown as typeof fetch,
       }),
     ).rejects.toMatchObject({
@@ -410,7 +430,7 @@ describe("Realtime call creation", () => {
     {
       label: "GPT-Live",
       auth: { type: "oauth" as const, token: "oauth-token", accountId: "acct-1" },
-      model: "gpt-live-1-codex",
+      model: "gpt-live-test-canary",
       location: "/v1/live/rtc_oversized_answer",
     },
     {

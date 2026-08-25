@@ -223,7 +223,7 @@ describeLive("GPT-Live Platform WebSocket", () => {
       }
       const bridge = new OpenAIQuicksilverVoiceBridge({
         providerConfig: {},
-        model: "gpt-live-1-codex",
+        model: "gpt-live-test-canary",
         voice: "spruce",
         instructions: "Keep this transport verification session silent.",
         audioFormat: { encoding: "pcm16", sampleRateHz: 24000, channels: 1 },
@@ -457,7 +457,7 @@ describeLive("OpenAI OAuth WebRTC", () => {
           requestIds,
           sdp: offerSdp,
           session: buildOpenAIQuicksilverSession({
-            model: "gpt-live-1-codex",
+            model: "gpt-live-test-canary",
             instructions: "Keep this transport verification session silent.",
             voice: "spruce",
           }),

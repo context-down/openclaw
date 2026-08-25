@@ -34,7 +34,6 @@ import {
   resolveOpenAIChatGptSubscriptionAuth,
   resolveOpenAIProviderConfigRecord,
 } from "./realtime-provider-shared.js";
-import { OPENAI_GPT_LIVE_MODELS, OPENAI_GPT_LIVE_VOICES } from "./realtime-quicksilver.js";
 
 export type OpenAIRealtimeVoice = (typeof OPENAI_REALTIME_VOICES)[number];
 
@@ -84,15 +83,9 @@ export const OPENAI_REALTIME_MODELS = [
   "gpt-realtime-2.1",
   "gpt-realtime-2.1-mini",
   "gpt-realtime-2",
-  ...OPENAI_GPT_LIVE_MODELS,
 ] as const;
 export const OPENAI_REALTIME_INPUT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
-export const OPENAI_REALTIME_CAPABILITIES: RealtimeVoiceProviderCapabilities & {
-  voicesByModel: Record<string, readonly string[]>;
-} = {
-  voicesByModel: Object.fromEntries(
-    OPENAI_GPT_LIVE_MODELS.map((model) => [model, OPENAI_GPT_LIVE_VOICES]),
-  ),
+export const OPENAI_REALTIME_CAPABILITIES: RealtimeVoiceProviderCapabilities = {
   transports: ["webrtc", "gateway-relay"],
   inputAudioFormats: [
     REALTIME_VOICE_AUDIO_FORMAT_G711_ULAW_8KHZ,

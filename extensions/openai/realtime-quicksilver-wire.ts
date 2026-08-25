@@ -34,9 +34,13 @@ const OPENAI_REALTIME_LOCATION_MAX_BYTES = 512;
 const OPENAI_REALTIME_CALL_ID_RE = /^[A-Za-z0-9_-]{1,128}$/u;
 const OPENAI_GPT_LIVE_WAITLIST_URL = "https://openai.com/form/gpt-live-1-in-the-api/";
 
-function redactOpenAIRealtimeErrorDetail(text: string, auth: OpenAIQuicksilverAuth): string {
+function redactOpenAIRealtimeErrorDetail(
+  text: string,
+  auth: OpenAIQuicksilverAuth,
+  model?: string,
+): string {
   let redacted = text;
-  const exactSecrets = [auth.token, auth.type === "oauth" ? auth.accountId : undefined];
+  const exactSecrets = [auth.token, auth.type === "oauth" ? auth.accountId : undefined, model];
   for (const secret of exactSecrets) {
     if (secret) {
       redacted = redacted.split(secret).join("[REDACTED]");
@@ -496,7 +500,11 @@ export async function createOpenAIQuicksilverCall(
     const detail = providerDetail?.truncated
       ? ""
       : truncateUtf16Safe(
-          redactOpenAIRealtimeErrorDetail(providerDetail?.text.trim() ?? "", params.auth),
+          redactOpenAIRealtimeErrorDetail(
+            providerDetail?.text.trim() ?? "",
+            params.auth,
+            params.session.model,
+          ),
           OPENAI_REALTIME_ERROR_DETAIL_MAX_CHARS,
         );
     throw new OpenAIQuicksilverCallError(

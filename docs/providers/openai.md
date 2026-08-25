@@ -1154,9 +1154,10 @@ value into `plugins.entries.openai.config.personality` when that key is unset.
     and Voice Call use the Frameless Bidi
     `wss://api.openai.com/v1/live?model=...` endpoint with Platform API-key auth.
 
-    Use `gpt-live-1-codex`. The values `gpt-live-1` and
-    `gpt-live-1-mini` are not valid on this route. Opt in explicitly with
-    `talk.realtime.model`; `gpt-realtime-2.1` remains the GA default.
+    Use the account-issued `gpt-live-*` model value. Opaque model values are
+    accepted as free-form Talk config but are not published through catalogs
+    or diagnostics. Opt in explicitly with `talk.realtime.model`;
+    `gpt-realtime-2.1` remains the GA default.
 
     GPT-Live follows the Codex V3 voice contract: `arbor`, `breeze`, `cove`,
     `ember`, `juniper`, `maple`, `sol`, `spruce`, and `vale`. OpenClaw defaults
@@ -1187,7 +1188,7 @@ value into `plugins.entries.openai.config.personality` when that key is unset.
       talk: {
         realtime: {
           provider: "openai",
-          model: "gpt-live-1-codex",
+          model: "<account-issued-gpt-live-model>",
           transport: "webrtc",
         },
       },
@@ -1204,7 +1205,7 @@ value into `plugins.entries.openai.config.personality` when that key is unset.
       talk: {
         realtime: {
           provider: "openai",
-          model: "gpt-live-1-codex",
+          model: "<account-issued-gpt-live-model>",
           transport: "gateway-relay",
         },
       },
