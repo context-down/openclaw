@@ -329,12 +329,14 @@ export async function applySessionEntryLifecycleMutation(params: {
     materializationFailed: boolean,
   ) {
     let beforeCount = 0;
+    let beforeActiveCount = 0;
     const removedSessionKeys: string[] = [];
     let archivedTranscripts: SessionLifecycleArchivedTranscript[] = [];
     const maintenancePlans: SessionEntryMaintenancePlan[] = [];
     runOpenClawAgentWriteTransaction((transactionDb) => {
       params.beforeCommitInTransaction?.();
       beforeCount = readSessionEntryCount(transactionDb);
+      beforeActiveCount = readSessionEntryCount(transactionDb, { excludeArchived: true });
       const validatedRemovals = projected.removals.filter((removal) => {
         if (materializationFailed && removal.removal.archiveRemovedTranscript === true) {
           return false;
@@ -496,7 +498,13 @@ export async function applySessionEntryLifecycleMutation(params: {
       );
     }, toDatabaseOptions(resolved));
     emitCommittedLifecycleIdentityMutations({ projected, removedSessionKeys });
-    return { archivedTranscripts, beforeCount, maintenancePlans, removedSessionKeys };
+    return {
+      archivedTranscripts,
+      beforeCount,
+      beforeActiveCount,
+      maintenancePlans,
+      removedSessionKeys,
+    };
   }
 
   const { archivedTranscripts: maintenanceArchivedTranscripts, ...maintenance } =
@@ -516,6 +524,10 @@ export async function applySessionEntryLifecycleMutation(params: {
   }
   const archivedTranscripts = [...publishedRemovalTranscripts, ...maintenanceArchivedTranscripts];
   const afterCount = readSessionEntryCount(openOpenClawAgentDatabase(toDatabaseOptions(resolved)));
+  const afterActiveCount = readSessionEntryCount(
+    openOpenClawAgentDatabase(toDatabaseOptions(resolved)),
+    { excludeArchived: true },
+  );
   emitArchivedTranscriptUpdates(archivedTranscripts);
   const archivedTranscriptDirectories = uniqueStrings(
     archivedTranscripts.map((transcript) => path.dirname(transcript.archivedPath)),
@@ -539,6 +551,8 @@ export async function applySessionEntryLifecycleMutation(params: {
   }
   return {
     beforeCount: committed.beforeCount,
+    beforeActiveCount: committed.beforeActiveCount,
+    afterActiveCount,
     removedEntries: committed.removedSessionKeys.length,
     removedSessionKeys: committed.removedSessionKeys,
     ...maintenance,
