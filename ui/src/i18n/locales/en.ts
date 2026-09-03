@@ -3065,7 +3065,6 @@ export const en: TranslationMap & {
     categoriesLabel: "Plugin categories",
     categoriesTitle: "Categories",
     allCategories: "All categories",
-    configureCategory: "Configure {category}",
     loadMore: "Load more",
     loadingMore: "Loading more…",
     downloadCount: "{count} downloads",

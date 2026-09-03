@@ -20,7 +20,6 @@ import {
   startControlUiE2eServer,
   type ControlUiE2eServer,
 } from "../../test-helpers/control-ui-e2e.ts";
-
 const chromiumExecutablePath = resolvePlaywrightChromiumExecutablePath(chromium.executablePath());
 const chromiumAvailable = canRunPlaywrightChromium(chromiumExecutablePath);
 const allowMissingChromium = process.env.OPENCLAW_UI_E2E_ALLOW_MISSING_CHROMIUM === "1";
@@ -38,7 +37,6 @@ const pluginMethods = [
   "plugins.setEnabled",
   "plugins.uninstall",
 ];
-
 const memoryDiscoveryPlugin = {
   id: "ch_bWVtb3J5LXBsdXM",
   catalog: {
@@ -59,7 +57,6 @@ const memoryDiscoveryPlugin = {
     action: "manage",
   },
 } satisfies PluginDiscoveryEntry;
-
 const matrixDiscoveryPlugin = {
   ...memoryDiscoveryPlugin,
   id: "ch_bWF0cml4",
@@ -81,7 +78,6 @@ const matrixDiscoveryPlugin = {
     action: "install",
   },
 } satisfies PluginDiscoveryEntry;
-
 const telegramDiscoveryPlugin = {
   ...matrixDiscoveryPlugin,
   id: "ch_QG9wZW5jbGF3L3RlbGVncmFt",
@@ -101,12 +97,10 @@ const telegramDiscoveryPlugin = {
     action: "manage",
   },
 } satisfies PluginDiscoveryEntry;
-
 const discoveryResult = {
   items: [memoryDiscoveryPlugin, telegramDiscoveryPlugin],
   nextCursor: "catalog-page-2",
 } satisfies PluginDiscoveryResult;
-
 const featuredResult = {
   items: [
     memoryDiscoveryPlugin,
@@ -144,60 +138,22 @@ const featuredResult = {
     },
   ],
 } satisfies PluginDiscoveryResult;
-
 const discoveryCategories = {
   categories: [
-    {
-      slug: "channels",
-      label: "Channels",
-      description: "Messaging.",
-      icon: "message-circle",
-      order: 0,
-    },
-    { slug: "models", label: "Models", description: "Model providers.", icon: "brain", order: 1 },
-    { slug: "memory", label: "Memory", description: "Memory systems.", icon: "brain", order: 2 },
-    {
-      slug: "context",
-      label: "Context",
-      description: "Context tools.",
-      icon: "book-open",
-      order: 3,
-    },
-    {
-      slug: "voice",
-      label: "Voice",
-      description: "Voice tools.",
-      icon: "message-square",
-      order: 4,
-    },
-    { slug: "media", label: "Media", description: "Media tools.", icon: "palette", order: 5 },
-    { slug: "web", label: "Web", description: "Web tools.", icon: "globe", order: 6 },
-    { slug: "tools", label: "Tools", description: "Agent tools.", icon: "wrench", order: 7 },
-    {
-      slug: "runtime",
-      label: "Runtime",
-      description: "Runtime tools.",
-      icon: "git-branch",
-      order: 8,
-    },
-    {
-      slug: "gateway",
-      label: "Gateway",
-      description: "Gateway tools.",
-      icon: "activity",
-      order: 9,
-    },
-    {
-      slug: "security",
-      label: "Security",
-      description: "Security tools.",
-      icon: "shield",
-      order: 10,
-    },
-    { slug: "other", label: "Other", description: "Other plugins.", icon: "package", order: 11 },
-  ],
+    ["channels", "Channels", "Messaging.", "message-circle"],
+    ["models", "Models", "Model providers.", "brain"],
+    ["memory", "Memory", "Memory systems.", "brain"],
+    ["context", "Context", "Context tools.", "book-open"],
+    ["voice", "Voice", "Voice tools.", "message-square"],
+    ["media", "Media", "Media tools.", "palette"],
+    ["web", "Web", "Web tools.", "globe"],
+    ["tools", "Tools", "Agent tools.", "wrench"],
+    ["runtime", "Runtime", "Runtime tools.", "git-branch"],
+    ["gateway", "Gateway", "Gateway tools.", "activity"],
+    ["security", "Security", "Security tools.", "shield"],
+    ["other", "Other", "Other plugins.", "package"],
+  ].map(([slug, label, description, icon], order) => ({ slug, label, description, icon, order })),
 };
-
 const workboardDisabled = {
   id: "workboard",
   name: "Workboard",
@@ -634,8 +590,10 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
       expect(await page.getByRole("searchbox", { name: "Search plugins" }).count()).toBe(0);
       const firstCard = page.locator('[data-plugin-id="attention-a"]');
       expect(
-        (await firstCard.locator(".installed-plugins-card__summary").textContent())?.trim(),
-      ).toBe("Operator-visible capability for attention-a.");
+        await firstCard
+          .getByText("Operator-visible capability for attention-a.", { exact: true })
+          .count(),
+      ).toBe(1);
       expect(await firstCard.textContent()).not.toContain("internal-category");
       const geometry = await firstCard.evaluate((card) => {
         const cardRect = card.getBoundingClientRect();
@@ -837,53 +795,32 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
     try {
       await page.goto(`${server.baseUrl}plugins`);
       await page.getByRole("heading", { name: "Featured", exact: true }).waitFor();
-      const featured = page.locator(".plugin-featured-card");
-      await expect.poll(() => featured.count()).toBe(3);
-      expect((await featured.allTextContents()).join(" ")).not.toContain("Already Enabled");
-      expect(await featured.nth(1).getAttribute("href")).toBe("/plugins/ch_bWF0cml4");
-      expect(await featured.nth(1).locator(".plugin-card-author").textContent()).toBe("@openclaw");
-      expect(
-        await featured.nth(1).locator('.plugin-official-badge[aria-label="Official"]').count(),
-      ).toBe(1);
-      expect(
-        await featured.nth(1).locator(".plugin-featured-card__downloads").textContent(),
-      ).toContain("52,201 downloads");
+      const featured = page.getByRole("region", { name: "Featured", exact: true });
+      const featuredLinks = featured.getByRole("link");
+      await expect.poll(() => featuredLinks.count()).toBe(3);
+      expect((await featuredLinks.allTextContents()).join(" ")).not.toContain("Already Enabled");
+      const matrixFeatured = page.locator('a[data-plugin-id="ch_bWF0cml4"]');
+      expect(await matrixFeatured.getAttribute("href")).toBe("/plugins/ch_bWF0cml4");
+      expect(await matrixFeatured.getByText("@openclaw", { exact: true }).count()).toBe(1);
+      expect(await matrixFeatured.getByLabel("Official", { exact: true }).count()).toBe(1);
+      expect(await matrixFeatured.getByText("52,201 downloads", { exact: true }).count()).toBe(1);
 
-      const categoryLabels = await page
-        .locator(".plugin-catalog-category")
-        .evaluateAll((elements) => elements.map((element) => element.textContent?.trim()));
-      expect(categoryLabels).toEqual([
-        "All categories",
-        "Channels",
-        "Models",
-        "Memory",
-        "Context",
-        "Voice",
-        "Media",
-        "Web",
-        "Tools",
-        "Runtime",
-        "Gateway",
-        "Security",
-        "Other",
-      ]);
-      expect(await page.locator(".plugin-catalog-category__settings").count()).toBe(3);
-      const telegramInstalled = page.locator('.installed-plugins-card[data-plugin-id="telegram"]');
-      expect(await telegramInstalled.locator(".plugin-card-author").textContent()).toBe(
-        "@openclaw",
+      const categories = page.getByRole("complementary", { name: "Plugin categories" });
+      const categoryLabels = (await categories.getByRole("button").allTextContents()).map((label) =>
+        label.trim(),
       );
-      expect(
-        await telegramInstalled.locator('.plugin-official-badge[aria-label="Official"]').count(),
-      ).toBe(1);
-      const telegramCatalog = page.locator(
-        '.plugin-catalog-result[data-plugin-id="ch_QG9wZW5jbGF3L3RlbGVncmFt"]',
+      expect(categoryLabels.join(" | ")).toBe(
+        "All categories | Channels | Models | Memory | Context | Voice | Media | Web | Tools | Runtime | Gateway | Security | Other",
       );
+      expect(await categories.getByRole("link").count()).toBe(0);
+      const telegramInstalled = page.locator('[data-plugin-id="telegram"]');
+      expect(await telegramInstalled.getByText("@openclaw", { exact: true }).count()).toBe(1);
+      expect(await telegramInstalled.getByLabel("Official", { exact: true }).count()).toBe(1);
+      const telegramCatalog = page.locator('[data-plugin-id="ch_QG9wZW5jbGF3L3RlbGVncmFt"]');
       expect(await telegramCatalog.textContent()).toContain("Installed · Disabled");
       expect(await telegramCatalog.textContent()).toContain("@openclaw");
       expect(
-        await page
-          .locator('.plugin-catalog-result[data-plugin-id="ch_bWVtb3J5LXBsdXM"]')
-          .textContent(),
+        await featured.locator('[data-plugin-id="ch_bWVtb3J5LXBsdXM"]').textContent(),
       ).toContain("Installed · Disabled");
 
       let requestCount = (await gateway.getRequests("plugins.catalog.browse")).length;
@@ -892,8 +829,10 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
         after: requestCount,
       });
       expect(officialRequest.params).toMatchObject({ intent: "official", pageSize: 20 });
-      await page.locator(".plugin-catalog-result", { hasText: "Matrix" }).waitFor();
-      expect(await featured.count()).toBe(3);
+      expect(await telegramInstalled.getByLabel("Official", { exact: true }).count()).toBe(1);
+      const explore = page.getByRole("region", { name: "Explore plugins", exact: true });
+      await explore.getByRole("link", { name: /Matrix/u }).waitFor();
+      expect(await featuredLinks.count()).toBe(3);
 
       await page.getByRole("tab", { name: "All", exact: true }).click();
       const search = page.getByRole("searchbox", { name: "Search ClawHub plugins" });
@@ -910,8 +849,8 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
             ),
         )
         .toBe(true);
-      await page.locator(".plugin-catalog-result", { hasText: "Matrix" }).waitFor();
-      expect(await featured.count()).toBe(3);
+      await explore.getByRole("link", { name: /Matrix/u }).waitFor();
+      expect(await featuredLinks.count()).toBe(3);
 
       requestCount = (await gateway.getRequests("plugins.catalog.browse")).length;
       await search.fill("");
@@ -934,14 +873,16 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
         await page.getByText("You’ve reached the end of the catalog.", { exact: true }).count(),
       ).toBe(0);
 
-      await featured.nth(1).click();
+      await featuredLinks.nth(1).click();
       await expect.poll(() => new URL(page.url()).pathname).toBe("/plugins/ch_bWF0cml4");
       await page.goto(`${server.baseUrl}plugins`);
-      await page
-        .locator('.plugin-catalog-category-wrap:has-text("Channels")')
-        .getByRole("link", { name: "Configure Channels" })
-        .click();
-      await expect.poll(() => new URL(page.url()).pathname).toBe("/settings/channels");
+      await page.getByRole("heading", { name: "Featured", exact: true }).waitFor();
+      requestCount = (await gateway.getRequests("plugins.catalog.browse")).length;
+      await categories.getByRole("button", { name: "Channels", exact: true }).click();
+      const categoryRequest = await gateway.waitForRequest("plugins.catalog.browse", {
+        after: requestCount,
+      });
+      expect(categoryRequest.params).toMatchObject({ category: "channels", pageSize: 20 });
     } finally {
       await context.close();
     }

@@ -18,18 +18,6 @@ export function mergePluginCatalogItem(
   return { ...current, plugins };
 }
 
-export function pluginCategorySettingsRoute(
-  slug: string,
-): "channels" | "model-providers" | "memory" | null {
-  if (slug === "channels") {
-    return "channels";
-  }
-  if (slug === "models") {
-    return "model-providers";
-  }
-  return slug === "memory" ? "memory" : null;
-}
-
 export function pluginMutationBlockedReason(params: {
   connected: boolean;
   hasAdminAccess: boolean;

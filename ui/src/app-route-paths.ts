@@ -213,8 +213,12 @@ export function isLegacyPluginsDiscoveryPath(pathname: string, basePath = ""): b
   return normalizedPath === `${pathForRoute("plugin-settings", basePath)}/discover`;
 }
 
+function isPluginCatalogId(id: string): boolean {
+  return /^[A-Za-z0-9_-]+$/u.test(id);
+}
+
 export function pathForPluginCatalogEntry(id: string, basePath = ""): string {
-  if (!/^[A-Za-z0-9_-]+$/u.test(id)) {
+  if (!isPluginCatalogId(id)) {
     throw new Error("Invalid plugin catalog id for a route path.");
   }
   return `${pathForRoute("plugins", basePath)}/${id}`;
@@ -227,7 +231,7 @@ export function pluginCatalogIdFromPath(pathname: string, basePath = ""): string
     return null;
   }
   const id = normalizedPath.slice(prefix.length);
-  return /^[A-Za-z0-9_-]+$/u.test(id) ? id : null;
+  return isPluginCatalogId(id) ? id : null;
 }
 
 export function pathForPluginSettings(pluginId: string, basePath = ""): string {

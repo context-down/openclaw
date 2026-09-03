@@ -11,6 +11,12 @@ import type {
   PluginDiscoveryEntry,
   PluginDiscoveryResult,
 } from "../../lib/plugins/index.ts";
+import {
+  renderPluginAuthor,
+  renderPluginCardIdentity,
+  renderPluginCardSummary,
+  renderPluginOfficialBadge,
+} from "./plugin-card.ts";
 
 export type PluginDiscoveryIntent = "all" | "trending" | "official";
 
@@ -29,12 +35,10 @@ export type PluginCatalogResultsProps = {
   category: string | null;
   query: string;
   entryHref: (id: string) => string;
-  categorySettingsHref: (slug: string) => string | null;
   onIntentChange: (intent: PluginDiscoveryIntent) => void;
   onCategoryChange: (category: string | null) => void;
   onQueryChange: (query: string) => void;
   onOpenEntry: (id: string) => void;
-  onOpenCategorySettings: (slug: string) => void;
   onLoadMoreTarget: (element: Element | undefined) => void;
   onLoadMore: () => void;
   onRetry: () => void;
@@ -75,22 +79,6 @@ function stateLabel(plugin: PluginDiscoveryEntry): string {
   return t("pluginsPage.available");
 }
 
-function renderOfficialBadge(): TemplateResult {
-  return html`<span
-    class="plugin-official-badge"
-    aria-label=${t("pluginsPage.official")}
-    title=${t("pluginsPage.official")}
-    >${icons.badgeCheck}</span
-  >`;
-}
-
-function renderAuthor(plugin: PluginDiscoveryEntry): TemplateResult | typeof nothing {
-  if (!plugin.catalog.author) {
-    return nothing;
-  }
-  return html`<span class="plugin-card-author">@${plugin.catalog.author}</span>`;
-}
-
 function renderFeaturedCard(
   plugin: PluginDiscoveryEntry,
   props: PluginCatalogResultsProps,
@@ -111,17 +99,15 @@ function renderFeaturedCard(
       <span class="installed-plugins-card__art plugin-featured-card__art" aria-hidden="true">
         ${categoryIcon(plugin.catalog.icon)}
       </span>
-      <div class="installed-plugins-card__identity">
-        <div class="plugin-card-title-row">
-          <h3>${plugin.catalog.name}</h3>
-          ${plugin.catalog.official ? renderOfficialBadge() : nothing}
-        </div>
-        ${renderAuthor(plugin)}
-      </div>
+      ${renderPluginCardIdentity({
+        name: plugin.catalog.name,
+        attribution: {
+          ...(plugin.catalog.author ? { author: plugin.catalog.author } : {}),
+          official: plugin.catalog.official,
+        },
+      })}
     </div>
-    <p class="installed-plugins-card__summary">
-      ${plugin.catalog.summary || t("pluginsPage.optionalCapability")}
-    </p>
+    ${renderPluginCardSummary(plugin.catalog.summary || t("pluginsPage.optionalCapability"))}
     <div class="plugin-featured-card__footer">
       <span class="plugin-featured-card__state" data-state=${plugin.local.state}
         >${stateLabel(plugin)}</span
@@ -209,36 +195,16 @@ function renderCategories(props: PluginCatalogResultsProps): TemplateResult {
     ${repeat(
       props.categories.toSorted((left, right) => left.order - right.order),
       (item) => item.slug,
-      (item) => {
-        const settingsHref = props.categorySettingsHref(item.slug);
-        return html`<div class="plugin-catalog-category-wrap">
-          <button
-            type="button"
-            class="plugin-catalog-category ${props.category === item.slug ? "is-active" : ""}"
-            title=${item.description}
-            aria-pressed=${props.category === item.slug}
-            @click=${() => props.onCategoryChange(item.slug)}
-          >
-            <span aria-hidden="true">${categoryIcon(item.icon)}</span>
-            <span>${item.label}</span>
-          </button>
-          ${settingsHref
-            ? html`<a
-                class="plugin-catalog-category__settings"
-                href=${settingsHref}
-                aria-label=${t("pluginsPage.configureCategory", { category: item.label })}
-                @click=${(event: MouseEvent) => {
-                  if (!shouldHandleNavigationClick(event)) {
-                    return;
-                  }
-                  event.preventDefault();
-                  props.onOpenCategorySettings(item.slug);
-                }}
-                >${icons.settings}</a
-              >`
-            : nothing}
-        </div>`;
-      },
+      (item) => html`<button
+        type="button"
+        class="plugin-catalog-category ${props.category === item.slug ? "is-active" : ""}"
+        title=${item.description}
+        aria-pressed=${props.category === item.slug}
+        @click=${() => props.onCategoryChange(item.slug)}
+      >
+        <span aria-hidden="true">${categoryIcon(item.icon)}</span>
+        <span>${item.label}</span>
+      </button>`,
     )}
   </aside>`;
 }
@@ -266,14 +232,14 @@ function renderResultRow(
     <div class="plugin-catalog-result__identity">
       <div class="plugin-catalog-result__title-row">
         <h3>${plugin.catalog.name}</h3>
-        ${plugin.catalog.official ? renderOfficialBadge() : nothing}
+        ${plugin.catalog.official ? renderPluginOfficialBadge() : nothing}
         ${firstCategory
           ? html`<span class="plugin-catalog-result__category">${firstCategory}</span>`
           : nothing}
       </div>
       <p>${plugin.catalog.summary || t("pluginsPage.optionalCapability")}</p>
       <div class="plugin-catalog-result__meta">
-        ${renderAuthor(plugin)}
+        ${renderPluginAuthor(plugin.catalog.author)}
         ${plugin.catalog.downloads === undefined
           ? nothing
           : html`<span>

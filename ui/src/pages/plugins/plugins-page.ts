@@ -40,11 +40,7 @@ import type { PluginRowMessage } from "./plugin-row-message.ts";
 import { PluginsConsentController } from "./plugins-consent-controller.ts";
 import { renderPluginsHubHeader } from "./plugins-hub-header.ts";
 import { PLUGINS_HUB_PANEL_ID, type PluginsHubTab } from "./plugins-hub.ts";
-import {
-  mergePluginCatalogItem,
-  pluginCategorySettingsRoute,
-  pluginMutationBlockedReason,
-} from "./plugins-page-model.ts";
+import { mergePluginCatalogItem, pluginMutationBlockedReason } from "./plugins-page-model.ts";
 import type { PluginsRouteData } from "./route-data.ts";
 import { pluginAdvancedSchema, pluginConfigSchema } from "./settings-model.ts";
 import {
@@ -552,10 +548,7 @@ class PluginsPage extends OpenClawLightDomElement {
                 query: this.query,
                 busy: this.busy,
                 iconUrls: this.iconUrls,
-                discoveryEntries: [
-                  ...this.discovery.featured,
-                  ...(this.discovery.result?.items ?? []),
-                ],
+                attributions: this.discovery.attributions,
                 canMutate: this.canMutate(),
                 mutationBlockedReason: blockedReason,
                 consent: this.consentController.consent,
@@ -604,10 +597,6 @@ class PluginsPage extends OpenClawLightDomElement {
                 category: this.discovery.category,
                 query: this.discovery.query,
                 entryHref: (id) => pathForPluginCatalogEntry(id, this.context.basePath),
-                categorySettingsHref: (slug) => {
-                  const route = pluginCategorySettingsRoute(slug);
-                  return route ? pathForRoute(route, this.context.basePath) : null;
-                },
                 onIntentChange: (intent) => this.discovery.selectIntent(intent),
                 onCategoryChange: (category) => this.discovery.selectCategory(category),
                 onQueryChange: (query) => this.discovery.updateQuery(query),
@@ -615,12 +604,6 @@ class PluginsPage extends OpenClawLightDomElement {
                   this.context.navigate("plugins", {
                     pathname: pathForPluginCatalogEntry(id, this.context.basePath),
                   });
-                },
-                onOpenCategorySettings: (slug) => {
-                  const route = pluginCategorySettingsRoute(slug);
-                  if (route) {
-                    this.context.navigate(route);
-                  }
                 },
                 onLoadMoreTarget: (element) => this.discovery.observeLoadMore(element),
                 onLoadMore: () => void this.discovery.loadMore(),

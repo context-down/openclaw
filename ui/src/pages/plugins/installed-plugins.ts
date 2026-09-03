@@ -12,7 +12,6 @@ import { formatUiExternalText } from "../../lib/format-error.ts";
 import { shouldHandleNavigationClick } from "../../lib/navigation-click.ts";
 import type {
   PluginCatalogItem,
-  PluginDiscoveryEntry,
   PluginListResult,
   PluginsInspectResult,
 } from "../../lib/plugins/index.ts";
@@ -21,6 +20,11 @@ import {
   renderPluginConsentDialog,
   type PluginConsentState,
 } from "./consent-dialog.ts";
+import {
+  renderPluginCardIdentity,
+  renderPluginCardSummary,
+  type PluginCardAttribution,
+} from "./plugin-card.ts";
 const INSTALLED_PLUGINS_INITIAL_LIMIT = 12;
 
 function existingCatalogOrder(left: PluginCatalogItem, right: PluginCatalogItem): number {
@@ -93,7 +97,7 @@ export type InstalledPluginsProps = {
   query: string;
   busy: Record<string, boolean>;
   iconUrls: Record<string, string>;
-  discoveryEntries?: readonly PluginDiscoveryEntry[];
+  attributions?: ReadonlyMap<string, PluginCardAttribution>;
   canMutate: boolean;
   mutationBlockedReason: string | null;
   consent: PluginConsentState | null;
@@ -112,26 +116,9 @@ export type InstalledPluginsProps = {
   onRetryConsentInspection: () => void;
 };
 
-function packageAuthor(packageName: string | undefined): string | undefined {
-  return /^@([^/]+)\//u.exec(packageName ?? "")?.[1];
-}
-
-function discoveryAttribution(
-  plugin: PluginCatalogItem,
-  entries: readonly PluginDiscoveryEntry[],
-): { author?: string; official: boolean } {
-  const remote = entries.find((entry) => entry.local.pluginId === plugin.id);
-  return {
-    ...(remote?.catalog.author || packageAuthor(plugin.packageName)
-      ? { author: remote?.catalog.author ?? packageAuthor(plugin.packageName) }
-      : {}),
-    official: remote?.catalog.official ?? false,
-  };
-}
-
 function renderCard(plugin: PluginCatalogItem, props: InstalledPluginsProps): TemplateResult {
   const open = () => props.onOpenSettings(plugin.id);
-  const attribution = discoveryAttribution(plugin, props.discoveryEntries ?? []);
+  const attribution = props.attributions?.get(plugin.id) ?? { official: false };
   return html`
     <a
       class="installed-plugins-card oc-card oc-card-interactive"
@@ -154,26 +141,9 @@ function renderCard(plugin: PluginCatalogItem, props: InstalledPluginsProps): Te
           () => props.onIconError(plugin.id),
           "installed-plugins-card__art",
         )}
-        <div class="installed-plugins-card__identity">
-          <div class="plugin-card-title-row">
-            <h3>${plugin.name}</h3>
-            ${attribution.official
-              ? html`<span
-                  class="plugin-official-badge"
-                  aria-label=${t("pluginsPage.official")}
-                  title=${t("pluginsPage.official")}
-                  >${icons.badgeCheck}</span
-                >`
-              : nothing}
-          </div>
-          ${attribution.author
-            ? html`<span class="plugin-card-author">@${attribution.author}</span>`
-            : nothing}
-        </div>
+        ${renderPluginCardIdentity({ name: plugin.name, attribution })}
       </div>
-      <p class="installed-plugins-card__summary">
-        ${plugin.description || t("pluginsPage.optionalCapability")}
-      </p>
+      ${renderPluginCardSummary(plugin.description || t("pluginsPage.optionalCapability"))}
       ${plugin.error
         ? html`<p class="installed-plugins-card__error" role="alert">
             ${formatUiExternalText(plugin.error)}

@@ -10,6 +10,7 @@ import type {
   PluginDiscoveryResult,
 } from "../../lib/plugins/index.ts";
 import type { PluginDiscoveryIntent } from "./catalog-results.ts";
+import type { PluginCardAttribution } from "./plugin-card.ts";
 
 type PluginDiscoveryGateway = {
   getClient: () => GatewayBrowserClient | null;
@@ -33,6 +34,7 @@ export class PluginDiscoveryController {
   private committedQuery = "";
   private searchTimer: ReturnType<typeof setTimeout> | null = null;
   private observer: IntersectionObserver | null = null;
+  private readonly entriesById = new Map<string, PluginDiscoveryEntry>();
   private readonly browseTask: Task;
   private readonly categoriesTask: Task;
   private readonly featuredTask: Task;
@@ -65,6 +67,7 @@ export class PluginDiscoveryController {
           : initialState,
       onComplete: (result) => {
         this.result = result;
+        this.rememberEntries(result.items);
       },
       onError: (error) => {
         this.error = formatUiError(error);
@@ -101,6 +104,7 @@ export class PluginDiscoveryController {
           : initialState,
       onComplete: (result) => {
         this.featured = result.items.filter((plugin) => !plugin.local.enabled).slice(0, 3);
+        this.rememberEntries(result.items);
       },
       onError: (error) => {
         this.featuredError = formatUiError(error);
@@ -114,6 +118,26 @@ export class PluginDiscoveryController {
 
   get featuredLoading(): boolean {
     return this.gateway.isConnected() && this.featuredTask.status === TaskStatus.PENDING;
+  }
+
+  get attributions(): ReadonlyMap<string, PluginCardAttribution> {
+    const attributions = new Map<string, PluginCardAttribution>();
+    for (const entry of this.entriesById.values()) {
+      if (!entry.local.pluginId) {
+        continue;
+      }
+      attributions.set(entry.local.pluginId, {
+        ...(entry.catalog.author ? { author: entry.catalog.author } : {}),
+        official: entry.catalog.official,
+      });
+    }
+    return attributions;
+  }
+
+  private rememberEntries(entries: readonly PluginDiscoveryEntry[]): void {
+    for (const entry of entries) {
+      this.entriesById.set(entry.id, entry);
+    }
   }
 
   ensureInitial(): void {
@@ -149,6 +173,7 @@ export class PluginDiscoveryController {
     this.categoriesError = null;
     this.featured = [];
     this.featuredError = null;
+    this.entriesById.clear();
     this.loadingMore = false;
   }
 
@@ -253,6 +278,7 @@ export class PluginDiscoveryController {
         items: [...this.result.items, ...next.items.filter((plugin) => !seen.has(plugin.id))],
         ...(next.nextCursor ? { nextCursor: next.nextCursor } : {}),
       };
+      this.rememberEntries(next.items);
     } catch (error) {
       if (this.gateway.isCurrent(scope)) {
         this.error = formatUiError(error);
