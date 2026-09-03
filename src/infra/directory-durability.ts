@@ -1,4 +1,7 @@
+import "./fs-safe-defaults.js";
 import fs from "node:fs/promises";
+// Archive Workers load this facade; keep its dependencies limited to filesystem primitives.
+import { sameFileIdentity } from "@openclaw/fs-safe/advanced";
 import {
   publishFileExclusive,
   syncDirectory,
@@ -7,8 +10,7 @@ import {
   type PublishFileExclusiveFailurePhase,
   type PublishFileExclusiveResult,
 } from "@openclaw/fs-safe/durability";
-import { sameFileIdentity } from "./fs-safe-advanced.js";
-import { FsSafeError } from "./fs-safe.js";
+import { FsSafeError } from "@openclaw/fs-safe/errors";
 
 export {
   ensureDurableDirectory,
@@ -17,6 +19,7 @@ export {
   publishFileExclusive,
   sha256File,
   syncDirectory,
+  syncDirectoryBestEffortSync,
   syncDirectorySync,
   type DirectorySyncOutcome,
   type DirectoryReceipt,
