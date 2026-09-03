@@ -28,9 +28,11 @@ const remotePlugin = {
 
 describe("ClawHub plugin catalog client", () => {
   it("browses the combined plugin endpoint with an opaque cursor", async () => {
-    const fetchImpl = vi.fn(async () =>
-      jsonResponse({ items: [remotePlugin], nextCursor: "pkgplugins:{opaque}" }),
-    );
+    let requestedUrl = "";
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      requestedUrl = String(input);
+      return jsonResponse({ items: [remotePlugin], nextCursor: "pkgplugins:{opaque}" });
+    });
 
     const result = await fetchClawHubPluginCatalog({
       baseUrl: "https://example.com",
@@ -41,7 +43,7 @@ describe("ClawHub plugin catalog client", () => {
       fetchImpl,
     });
 
-    const url = new URL(String(fetchImpl.mock.calls[0]?.[0]));
+    const url = new URL(requestedUrl);
     expect(url.pathname).toBe("/api/v1/plugins");
     expect(Object.fromEntries(url.searchParams)).toEqual({
       category: "memory",
@@ -70,9 +72,11 @@ describe("ClawHub plugin catalog client", () => {
   });
 
   it("uses plugin search without inventing pagination", async () => {
-    const fetchImpl = vi.fn(async () =>
-      jsonResponse({ results: [{ score: 9, package: remotePlugin }] }),
-    );
+    let requestedUrl = "";
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      requestedUrl = String(input);
+      return jsonResponse({ results: [{ score: 9, package: remotePlugin }] });
+    });
 
     const result = await fetchClawHubPluginCatalog({
       baseUrl: "https://example.com",
@@ -82,7 +86,7 @@ describe("ClawHub plugin catalog client", () => {
       fetchImpl,
     });
 
-    const url = new URL(String(fetchImpl.mock.calls[0]?.[0]));
+    const url = new URL(requestedUrl);
     expect(url.pathname).toBe("/api/v1/plugins/search");
     expect(Object.fromEntries(url.searchParams)).toEqual({
       q: "memory",
@@ -172,7 +176,11 @@ describe("ClawHub plugin catalog client", () => {
   });
 
   it("reads package detail through the canonical package endpoint", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ package: remotePlugin }));
+    let requestedUrl = "";
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      requestedUrl = String(input);
+      return jsonResponse({ package: remotePlugin });
+    });
 
     const detail = await fetchClawHubPluginDetail({
       baseUrl: "https://example.com",
@@ -180,9 +188,7 @@ describe("ClawHub plugin catalog client", () => {
       fetchImpl,
     });
 
-    expect(new URL(String(fetchImpl.mock.calls[0]?.[0])).pathname).toBe(
-      "/api/v1/packages/memory-plus",
-    );
+    expect(new URL(requestedUrl).pathname).toBe("/api/v1/packages/memory-plus");
     expect(detail.packageName).toBe("memory-plus");
   });
 });

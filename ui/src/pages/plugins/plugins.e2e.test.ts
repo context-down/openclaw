@@ -719,11 +719,15 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
       await page.goto(`${server.baseUrl}plugins`);
       await page.locator(".plugin-catalog-result", { hasText: "Memory Plus" }).waitFor();
       const requestsBeforeReconnect = (await gateway.getRequests("plugins.catalog.browse")).length;
+      const discoveryPlugin = discoveryResult.items.at(0);
+      if (!discoveryPlugin) {
+        throw new Error("Expected the discovery fixture to contain a plugin.");
+      }
       await gateway.setMethodResponse("plugins.catalog.browse", {
         items: [
           {
-            ...discoveryResult.items[0],
-            catalog: { ...discoveryResult.items[0].catalog, name: "Memory Reconnected" },
+            ...discoveryPlugin,
+            catalog: { ...discoveryPlugin.catalog, name: "Memory Reconnected" },
           },
         ],
       });
