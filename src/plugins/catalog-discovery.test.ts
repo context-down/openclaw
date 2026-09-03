@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  decodePluginDiscoveryId,
-  encodePluginDiscoveryId,
-  joinClawHubPluginCatalog,
-} from "./catalog-discovery.js";
+import { decodePluginDiscoveryId, joinClawHubPluginCatalog } from "./catalog-discovery.js";
 
 const remote = {
   packageName: "@alice/memory-plus",
@@ -16,7 +12,14 @@ const remote = {
 
 describe("plugin discovery identity and local join", () => {
   it("round-trips a stable URL-safe opaque route identity", () => {
-    const id = encodePluginDiscoveryId(remote.packageName);
+    const [plugin] = joinClawHubPluginCatalog({
+      remote: [remote],
+      local: { plugins: [], diagnostics: [], mutationAllowed: true },
+    });
+    const id = plugin?.id;
+    if (!id) {
+      throw new Error("Expected the joined catalog fixture to have an opaque id.");
+    }
 
     expect(id).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(id).not.toContain(remote.packageName);

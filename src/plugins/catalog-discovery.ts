@@ -76,7 +76,7 @@ function projectLocalFacts(
 }
 
 /** URL-safe route identity. Package aliases remain private to the Gateway join. */
-export function encodePluginDiscoveryId(packageName: string): string {
+function encodePluginDiscoveryId(packageName: string): string {
   const normalized = packageName.trim();
   if (!normalized) {
     throw new Error("Cannot encode an empty ClawHub package identity.");
