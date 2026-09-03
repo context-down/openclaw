@@ -67,7 +67,9 @@ const matrixDiscoveryPlugin = {
     ...memoryDiscoveryPlugin.catalog,
     name: "Matrix",
     summary: "Connect agents to Matrix rooms.",
+    author: "openclaw",
     categories: ["channels"],
+    downloads: 52_201,
     icon: "message-circle",
     official: true,
   },
@@ -80,8 +82,28 @@ const matrixDiscoveryPlugin = {
   },
 } satisfies PluginDiscoveryEntry;
 
+const telegramDiscoveryPlugin = {
+  ...matrixDiscoveryPlugin,
+  id: "ch_QG9wZW5jbGF3L3RlbGVncmFt",
+  catalog: {
+    ...matrixDiscoveryPlugin.catalog,
+    name: "Telegram",
+    summary: "Chat with your agent from Telegram groups and direct messages.",
+    author: "openclaw",
+    downloads: 12_847,
+  },
+  local: {
+    present: true,
+    installed: true,
+    enabled: false,
+    state: "disabled",
+    pluginId: "telegram",
+    action: "manage",
+  },
+} satisfies PluginDiscoveryEntry;
+
 const discoveryResult = {
-  items: [memoryDiscoveryPlugin],
+  items: [memoryDiscoveryPlugin, telegramDiscoveryPlugin],
   nextCursor: "catalog-page-2",
 } satisfies PluginDiscoveryResult;
 
@@ -125,23 +147,54 @@ const featuredResult = {
 
 const discoveryCategories = {
   categories: [
-    { slug: "tools", label: "Tools", description: "Agent tools.", icon: "wrench", order: 0 },
-    {
-      slug: "context",
-      label: "Context",
-      description: "Context tools.",
-      icon: "book-open",
-      order: 7,
-    },
-    { slug: "memory", label: "Memory", description: "Memory systems.", icon: "brain", order: 6 },
-    { slug: "models", label: "Models", description: "Model providers.", icon: "brain", order: 5 },
     {
       slug: "channels",
       label: "Channels",
       description: "Messaging.",
       icon: "message-circle",
+      order: 0,
+    },
+    { slug: "models", label: "Models", description: "Model providers.", icon: "brain", order: 1 },
+    { slug: "memory", label: "Memory", description: "Memory systems.", icon: "brain", order: 2 },
+    {
+      slug: "context",
+      label: "Context",
+      description: "Context tools.",
+      icon: "book-open",
+      order: 3,
+    },
+    {
+      slug: "voice",
+      label: "Voice",
+      description: "Voice tools.",
+      icon: "message-square",
       order: 4,
     },
+    { slug: "media", label: "Media", description: "Media tools.", icon: "palette", order: 5 },
+    { slug: "web", label: "Web", description: "Web tools.", icon: "globe", order: 6 },
+    { slug: "tools", label: "Tools", description: "Agent tools.", icon: "wrench", order: 7 },
+    {
+      slug: "runtime",
+      label: "Runtime",
+      description: "Runtime tools.",
+      icon: "git-branch",
+      order: 8,
+    },
+    {
+      slug: "gateway",
+      label: "Gateway",
+      description: "Gateway tools.",
+      icon: "activity",
+      order: 9,
+    },
+    {
+      slug: "security",
+      label: "Security",
+      description: "Security tools.",
+      icon: "shield",
+      order: 10,
+    },
+    { slug: "other", label: "Other", description: "Other plugins.", icon: "package", order: 11 },
   ],
 };
 
@@ -212,6 +265,21 @@ const calendarPlugin = {
   removable: true,
 } satisfies PluginCatalogItem;
 
+const telegramPlugin = {
+  id: "telegram",
+  name: "Telegram",
+  packageName: "@openclaw/telegram",
+  description: "Chat with your agent from Telegram groups and direct messages.",
+  version: "1.4.0",
+  kind: ["channel"],
+  origin: "bundled",
+  installed: true,
+  enabled: false,
+  state: "disabled",
+  category: "channel",
+  removable: false,
+} satisfies PluginCatalogItem;
+
 function installedInventoryPlugin(
   id: string,
   overrides: Partial<PluginCatalogItem> = {},
@@ -267,7 +335,12 @@ const installedPluginsItems = [
 
 const installedPluginsInventory = inventory(installedPluginsItems);
 
-const initialInventory = inventory([workboardDisabled, lobsterPlugin, remoteIconPlugin]);
+const initialInventory = inventory([
+  workboardDisabled,
+  telegramPlugin,
+  lobsterPlugin,
+  remoteIconPlugin,
+]);
 const calendarSearchResponse = {
   results: [
     {
@@ -560,9 +633,9 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
       );
       expect(await page.getByRole("searchbox", { name: "Search plugins" }).count()).toBe(0);
       const firstCard = page.locator('[data-plugin-id="attention-a"]');
-      expect(await firstCard.locator(".installed-plugins-card__identity p").textContent()).toBe(
-        "Operator-visible capability for attention-a.",
-      );
+      expect(
+        (await firstCard.locator(".installed-plugins-card__summary").textContent())?.trim(),
+      ).toBe("Operator-visible capability for attention-a.");
       expect(await firstCard.textContent()).not.toContain("internal-category");
       const geometry = await firstCard.evaluate((card) => {
         const cardRect = card.getBoundingClientRect();
@@ -768,6 +841,13 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
       await expect.poll(() => featured.count()).toBe(3);
       expect((await featured.allTextContents()).join(" ")).not.toContain("Already Enabled");
       expect(await featured.nth(1).getAttribute("href")).toBe("/plugins/ch_bWF0cml4");
+      expect(await featured.nth(1).locator(".plugin-card-author").textContent()).toBe("@openclaw");
+      expect(
+        await featured.nth(1).locator('.plugin-official-badge[aria-label="Official"]').count(),
+      ).toBe(1);
+      expect(
+        await featured.nth(1).locator(".plugin-featured-card__downloads").textContent(),
+      ).toContain("52,201 downloads");
 
       const categoryLabels = await page
         .locator(".plugin-catalog-category")
@@ -778,9 +858,28 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
         "Models",
         "Memory",
         "Context",
+        "Voice",
+        "Media",
+        "Web",
         "Tools",
+        "Runtime",
+        "Gateway",
+        "Security",
+        "Other",
       ]);
       expect(await page.locator(".plugin-catalog-category__settings").count()).toBe(3);
+      const telegramInstalled = page.locator('.installed-plugins-card[data-plugin-id="telegram"]');
+      expect(await telegramInstalled.locator(".plugin-card-author").textContent()).toBe(
+        "@openclaw",
+      );
+      expect(
+        await telegramInstalled.locator('.plugin-official-badge[aria-label="Official"]').count(),
+      ).toBe(1);
+      const telegramCatalog = page.locator(
+        '.plugin-catalog-result[data-plugin-id="ch_QG9wZW5jbGF3L3RlbGVncmFt"]',
+      );
+      expect(await telegramCatalog.textContent()).toContain("Installed · Disabled");
+      expect(await telegramCatalog.textContent()).toContain("@openclaw");
       expect(
         await page
           .locator('.plugin-catalog-result[data-plugin-id="ch_bWVtb3J5LXBsdXM"]')
@@ -831,7 +930,9 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
         await loadMore.scrollIntoViewIfNeeded();
       }
       await page.locator(".plugin-catalog-result", { hasText: "Slack" }).waitFor();
-      await page.getByText("You’ve reached the end of the catalog.", { exact: true }).waitFor();
+      expect(
+        await page.getByText("You’ve reached the end of the catalog.", { exact: true }).count(),
+      ).toBe(0);
 
       await featured.nth(1).click();
       await expect.poll(() => new URL(page.url()).pathname).toBe("/plugins/ch_bWF0cml4");
