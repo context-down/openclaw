@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import type {
   PluginDeclaredSurface,
   PluginsCatalogBrowseResult,
+  PluginsCatalogCategoriesResult,
   PluginsInspectResult,
 } from "../packages/gateway-protocol/src/schema/plugins.js";
 
@@ -20,6 +21,8 @@ export function buildPluginDiscoveryMock(): PluginsCatalogBrowseResult {
     downloads: number;
     pluginId?: string;
     enabled?: boolean;
+    categories?: string[];
+    icon?: string;
   }): PluginsCatalogBrowseResult["items"][number] => ({
     id: `ch_${Buffer.from(params.packageName, "utf8").toString("base64url")}`,
     catalog: {
@@ -28,7 +31,8 @@ export function buildPluginDiscoveryMock(): PluginsCatalogBrowseResult {
       family: "code-plugin",
       author: params.author,
       official: params.official,
-      categories: [],
+      categories: params.categories ?? [],
+      ...(params.icon ? { icon: params.icon } : {}),
       downloads: params.downloads,
     },
     local: params.pluginId
@@ -59,6 +63,8 @@ export function buildPluginDiscoveryMock(): PluginsCatalogBrowseResult {
         official: true,
         downloads: 176_431,
         pluginId: "whatsapp",
+        categories: ["channels"],
+        icon: "message-circle",
       }),
       entry({
         packageName: "@openclaw/matrix",
@@ -67,6 +73,8 @@ export function buildPluginDiscoveryMock(): PluginsCatalogBrowseResult {
         author: "openclaw",
         official: true,
         downloads: 52_201,
+        categories: ["channels"],
+        icon: "message-square",
       }),
       entry({
         packageName: "@openclaw/codex",
@@ -75,6 +83,8 @@ export function buildPluginDiscoveryMock(): PluginsCatalogBrowseResult {
         author: "openclaw",
         official: true,
         downloads: 36_956,
+        categories: ["context"],
+        icon: "book-open",
       }),
       entry({
         packageName: "@gendigital/sage-openclaw",
@@ -83,6 +93,8 @@ export function buildPluginDiscoveryMock(): PluginsCatalogBrowseResult {
         author: "gendigital",
         official: false,
         downloads: 19_609,
+        categories: ["tools"],
+        icon: "shield",
       }),
       entry({
         packageName: "@openclaw/discord",
@@ -93,6 +105,8 @@ export function buildPluginDiscoveryMock(): PluginsCatalogBrowseResult {
         downloads: 13_253,
         pluginId: "discord",
         enabled: false,
+        categories: ["channels"],
+        icon: "message-circle",
       }),
       entry({
         packageName: "@openclaw/deepseek-provider",
@@ -101,7 +115,51 @@ export function buildPluginDiscoveryMock(): PluginsCatalogBrowseResult {
         author: "openclaw",
         official: true,
         downloads: 10_742,
+        categories: ["models"],
+        icon: "brain",
       }),
+    ],
+  };
+}
+
+export function buildPluginDiscoveryCategoriesMock(): PluginsCatalogCategoriesResult {
+  return {
+    categories: [
+      {
+        slug: "channels",
+        label: "Channels",
+        description: "Messaging and communication integrations.",
+        icon: "message-circle",
+        order: 0,
+      },
+      {
+        slug: "models",
+        label: "Models",
+        description: "Model providers and inference runtimes.",
+        icon: "brain",
+        order: 1,
+      },
+      {
+        slug: "memory",
+        label: "Memory",
+        description: "Long-term memory systems.",
+        icon: "database",
+        order: 2,
+      },
+      {
+        slug: "context",
+        label: "Context",
+        description: "Context management and retrieval.",
+        icon: "book-open",
+        order: 3,
+      },
+      {
+        slug: "tools",
+        label: "Tools",
+        description: "Agent tools and capabilities.",
+        icon: "wrench",
+        order: 4,
+      },
     ],
   };
 }

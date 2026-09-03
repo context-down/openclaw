@@ -22,7 +22,7 @@ import {
   resetPluginsPageTestState,
   type RuntimeConfigTestState,
 } from "./plugins-page.test-support.ts";
-import type { PluginsRouteData } from "./plugins-page.ts";
+import type { PluginsRouteData } from "./route-data.ts";
 
 vi.mock("../../components/confirm-dialog.ts", () => ({ showConfirmDialog: vi.fn() }));
 
@@ -49,8 +49,11 @@ describe("PluginsPage", () => {
   });
 
   it("surfaces an initial catalog load failure", async () => {
-    const { client } = createClient(async () => {
-      throw new Error("catalog unavailable");
+    const { client } = createClient(async (method) => {
+      if (method === "plugins.list") {
+        throw new Error("catalog unavailable");
+      }
+      return method === "plugins.catalog.categories" ? { categories: [] } : { items: [] };
     });
     const harness = createGateway(client);
     const { page } = await mountPage(createContext(harness.gateway));

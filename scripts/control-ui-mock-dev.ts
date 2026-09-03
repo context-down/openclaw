@@ -46,6 +46,7 @@ import { buildCronMocks } from "./control-ui-mock-cron.ts";
 import { createStandaloneMockIsolationPlugins } from "./control-ui-mock-isolation.ts";
 import {
   buildPluginCatalogMock,
+  buildPluginDiscoveryCategoriesMock,
   buildPluginDiscoveryMock,
   buildPluginInspectMock,
   buildPluginSetEnabledMock,
@@ -2566,6 +2567,7 @@ async function createChatPickerScenario(
         installedCopies: fixture === "plugins-dense" ? 10 : 1,
       }),
       "plugins.catalog.browse": buildPluginDiscoveryMock(),
+      "plugins.catalog.categories": buildPluginDiscoveryCategoriesMock(),
       "plugins.inspect": buildPluginInspectMock({
         installedCopies: fixture === "plugins-dense" ? 10 : 1,
       }),

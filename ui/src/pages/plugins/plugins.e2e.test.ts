@@ -7,6 +7,7 @@ import type { PluginsSearchResult } from "../../../../packages/gateway-protocol/
 import { PROTOCOL_VERSION } from "../../../../packages/gateway-protocol/src/version.js";
 import type {
   PluginCatalogItem,
+  PluginDiscoveryEntry,
   PluginDiscoveryResult,
   PluginListResult,
   PluginMutationResult,
@@ -32,23 +33,71 @@ const pluginMethods = [
   "plugins.inspect",
   "plugins.search",
   "plugins.catalog.browse",
+  "plugins.catalog.categories",
   "plugins.install",
   "plugins.setEnabled",
   "plugins.uninstall",
 ];
 
+const memoryDiscoveryPlugin = {
+  id: "ch_bWVtb3J5LXBsdXM",
+  catalog: {
+    name: "Memory Plus",
+    summary: "Long-term memory for people and projects.",
+    family: "code-plugin",
+    author: "alice",
+    official: false,
+    categories: ["memory"],
+    downloads: 1240,
+  },
+  local: {
+    present: true,
+    installed: true,
+    enabled: false,
+    state: "disabled",
+    pluginId: "memory-plus",
+    action: "manage",
+  },
+} satisfies PluginDiscoveryEntry;
+
+const matrixDiscoveryPlugin = {
+  ...memoryDiscoveryPlugin,
+  id: "ch_bWF0cml4",
+  catalog: {
+    ...memoryDiscoveryPlugin.catalog,
+    name: "Matrix",
+    summary: "Connect agents to Matrix rooms.",
+    categories: ["channels"],
+    icon: "message-circle",
+    official: true,
+  },
+  local: {
+    present: false,
+    installed: false,
+    enabled: false,
+    state: "not-installed",
+    action: "install",
+  },
+} satisfies PluginDiscoveryEntry;
+
 const discoveryResult = {
+  items: [memoryDiscoveryPlugin],
+  nextCursor: "catalog-page-2",
+} satisfies PluginDiscoveryResult;
+
+const featuredResult = {
   items: [
+    memoryDiscoveryPlugin,
+    matrixDiscoveryPlugin,
     {
-      id: "ch_bWVtb3J5LXBsdXM",
+      ...memoryDiscoveryPlugin,
+      id: "ch_bG9uZy1jb250ZXh0",
       catalog: {
-        name: "Memory Plus",
-        summary: "Long-term memory for people and projects.",
-        family: "code-plugin",
-        author: "alice",
-        official: false,
-        categories: ["memory"],
-        downloads: 1240,
+        ...memoryDiscoveryPlugin.catalog,
+        name: "Long Context",
+        summary: "Keep long-running work focused.",
+        categories: ["context"],
+        icon: "book-open",
       },
       local: {
         present: false,
@@ -58,8 +107,43 @@ const discoveryResult = {
         action: "install",
       },
     },
+    {
+      ...memoryDiscoveryPlugin,
+      id: "ch_ZW5hYmxlZA",
+      catalog: { ...memoryDiscoveryPlugin.catalog, name: "Already Enabled" },
+      local: {
+        present: true,
+        installed: true,
+        enabled: true,
+        state: "enabled",
+        pluginId: "already-enabled",
+        action: "manage",
+      },
+    },
   ],
 } satisfies PluginDiscoveryResult;
+
+const discoveryCategories = {
+  categories: [
+    { slug: "tools", label: "Tools", description: "Agent tools.", icon: "wrench", order: 0 },
+    {
+      slug: "context",
+      label: "Context",
+      description: "Context tools.",
+      icon: "book-open",
+      order: 7,
+    },
+    { slug: "memory", label: "Memory", description: "Memory systems.", icon: "brain", order: 6 },
+    { slug: "models", label: "Models", description: "Model providers.", icon: "brain", order: 5 },
+    {
+      slug: "channels",
+      label: "Channels",
+      description: "Messaging.",
+      icon: "message-circle",
+      order: 4,
+    },
+  ],
+};
 
 const workboardDisabled = {
   id: "workboard",
@@ -363,7 +447,37 @@ function pluginMethodResponses() {
         },
       ],
     },
-    "plugins.catalog.browse": discoveryResult,
+    "plugins.catalog.browse": {
+      cases: [
+        { match: { intent: "trending", pageSize: 6 }, response: featuredResult },
+        {
+          match: { intent: "all", cursor: "catalog-page-2", pageSize: 20 },
+          response: {
+            items: [
+              {
+                ...matrixDiscoveryPlugin,
+                id: "ch_c2xhY2s",
+                catalog: { ...matrixDiscoveryPlugin.catalog, name: "Slack" },
+              },
+            ],
+          },
+        },
+        {
+          match: { intent: "official", pageSize: 20 },
+          response: { items: [matrixDiscoveryPlugin] },
+        },
+        {
+          match: { intent: "all", category: "channels", pageSize: 20 },
+          response: { items: [matrixDiscoveryPlugin] },
+        },
+        {
+          match: { intent: "all", query: "matrix", pageSize: 20 },
+          response: { items: [matrixDiscoveryPlugin] },
+        },
+        { match: { intent: "all", pageSize: 20 }, response: discoveryResult },
+      ],
+    },
+    "plugins.catalog.categories": discoveryCategories,
     "plugins.install": {
       cases: [
         {
@@ -634,6 +748,99 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
       await openAttentionSettings.focus();
       await page.keyboard.press("Enter");
       await expect.poll(() => new URL(page.url()).pathname).toBe("/settings/plugins/attention-a");
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("renders the full ClawHub catalog with stable featured cards and discovery controls", async () => {
+    const context = await newContext();
+    const page = await context.newPage();
+    const gateway = await installMockGateway(page, {
+      featureMethods: pluginMethods,
+      methodResponses: pluginMethodResponses(),
+    });
+
+    try {
+      await page.goto(`${server.baseUrl}plugins`);
+      await page.getByRole("heading", { name: "Featured", exact: true }).waitFor();
+      const featured = page.locator(".plugin-featured-card");
+      await expect.poll(() => featured.count()).toBe(3);
+      expect((await featured.allTextContents()).join(" ")).not.toContain("Already Enabled");
+      expect(await featured.nth(1).getAttribute("href")).toBe("/plugins/ch_bWF0cml4");
+
+      const categoryLabels = await page
+        .locator(".plugin-catalog-category")
+        .evaluateAll((elements) => elements.map((element) => element.textContent?.trim()));
+      expect(categoryLabels).toEqual([
+        "All categories",
+        "Channels",
+        "Models",
+        "Memory",
+        "Context",
+        "Tools",
+      ]);
+      expect(await page.locator(".plugin-catalog-category__settings").count()).toBe(3);
+      expect(
+        await page
+          .locator('.plugin-catalog-result[data-plugin-id="ch_bWVtb3J5LXBsdXM"]')
+          .textContent(),
+      ).toContain("Installed · Disabled");
+
+      let requestCount = (await gateway.getRequests("plugins.catalog.browse")).length;
+      await page.getByRole("tab", { name: "Official", exact: true }).click();
+      const officialRequest = await gateway.waitForRequest("plugins.catalog.browse", {
+        after: requestCount,
+      });
+      expect(officialRequest.params).toMatchObject({ intent: "official", pageSize: 20 });
+      await page.locator(".plugin-catalog-result", { hasText: "Matrix" }).waitFor();
+      expect(await featured.count()).toBe(3);
+
+      await page.getByRole("tab", { name: "All", exact: true }).click();
+      const search = page.getByRole("searchbox", { name: "Search ClawHub plugins" });
+      requestCount = (await gateway.getRequests("plugins.catalog.browse")).length;
+      await search.fill("matrix");
+      await expect
+        .poll(async () =>
+          (await gateway.getRequests("plugins.catalog.browse"))
+            .slice(requestCount)
+            .some(
+              (request) =>
+                JSON.stringify(request.params) ===
+                JSON.stringify({ intent: "all", query: "matrix", pageSize: 20 }),
+            ),
+        )
+        .toBe(true);
+      await page.locator(".plugin-catalog-result", { hasText: "Matrix" }).waitFor();
+      expect(await featured.count()).toBe(3);
+
+      requestCount = (await gateway.getRequests("plugins.catalog.browse")).length;
+      await search.fill("");
+      await expect
+        .poll(async () =>
+          (await gateway.getRequests("plugins.catalog.browse"))
+            .slice(requestCount)
+            .some(
+              (request) =>
+                JSON.stringify(request.params) === JSON.stringify({ intent: "all", pageSize: 20 }),
+            ),
+        )
+        .toBe(true);
+      const loadMore = page.getByRole("button", { name: "Load more", exact: true });
+      if ((await loadMore.count()) > 0) {
+        await loadMore.scrollIntoViewIfNeeded();
+      }
+      await page.locator(".plugin-catalog-result", { hasText: "Slack" }).waitFor();
+      await page.getByText("You’ve reached the end of the catalog.", { exact: true }).waitFor();
+
+      await featured.nth(1).click();
+      await expect.poll(() => new URL(page.url()).pathname).toBe("/plugins/ch_bWF0cml4");
+      await page.goto(`${server.baseUrl}plugins`);
+      await page
+        .locator('.plugin-catalog-category-wrap:has-text("Channels")')
+        .getByRole("link", { name: "Configure Channels" })
+        .click();
+      await expect.poll(() => new URL(page.url()).pathname).toBe("/settings/channels");
     } finally {
       await context.close();
     }
