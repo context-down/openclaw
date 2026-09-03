@@ -12,6 +12,7 @@ import { formatUiExternalText } from "../../lib/format-error.ts";
 import { shouldHandleNavigationClick } from "../../lib/navigation-click.ts";
 import type {
   PluginCatalogItem,
+  PluginDiscoveryEntry,
   PluginListResult,
   PluginsInspectResult,
 } from "../../lib/plugins/index.ts";
@@ -92,6 +93,7 @@ export type InstalledPluginsProps = {
   query: string;
   busy: Record<string, boolean>;
   iconUrls: Record<string, string>;
+  discoveryEntries?: readonly PluginDiscoveryEntry[];
   canMutate: boolean;
   mutationBlockedReason: string | null;
   consent: PluginConsentState | null;
@@ -110,8 +112,26 @@ export type InstalledPluginsProps = {
   onRetryConsentInspection: () => void;
 };
 
+function packageAuthor(packageName: string | undefined): string | undefined {
+  return /^@([^/]+)\//u.exec(packageName ?? "")?.[1];
+}
+
+function discoveryAttribution(
+  plugin: PluginCatalogItem,
+  entries: readonly PluginDiscoveryEntry[],
+): { author?: string; official: boolean } {
+  const remote = entries.find((entry) => entry.local.pluginId === plugin.id);
+  return {
+    ...(remote?.catalog.author || packageAuthor(plugin.packageName)
+      ? { author: remote?.catalog.author ?? packageAuthor(plugin.packageName) }
+      : {}),
+    official: remote?.catalog.official ?? false,
+  };
+}
+
 function renderCard(plugin: PluginCatalogItem, props: InstalledPluginsProps): TemplateResult {
   const open = () => props.onOpenSettings(plugin.id);
+  const attribution = discoveryAttribution(plugin, props.discoveryEntries ?? []);
   return html`
     <a
       class="installed-plugins-card oc-card oc-card-interactive"
@@ -135,10 +155,25 @@ function renderCard(plugin: PluginCatalogItem, props: InstalledPluginsProps): Te
           "installed-plugins-card__art",
         )}
         <div class="installed-plugins-card__identity">
-          <h3>${plugin.name}</h3>
-          <p>${plugin.description || t("pluginsPage.optionalCapability")}</p>
+          <div class="plugin-card-title-row">
+            <h3>${plugin.name}</h3>
+            ${attribution.official
+              ? html`<span
+                  class="plugin-official-badge"
+                  aria-label=${t("pluginsPage.official")}
+                  title=${t("pluginsPage.official")}
+                  >${icons.badgeCheck}</span
+                >`
+              : nothing}
+          </div>
+          ${attribution.author
+            ? html`<span class="plugin-card-author">@${attribution.author}</span>`
+            : nothing}
         </div>
       </div>
+      <p class="installed-plugins-card__summary">
+        ${plugin.description || t("pluginsPage.optionalCapability")}
+      </p>
       ${plugin.error
         ? html`<p class="installed-plugins-card__error" role="alert">
             ${formatUiExternalText(plugin.error)}

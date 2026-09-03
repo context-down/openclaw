@@ -552,6 +552,10 @@ class PluginsPage extends OpenClawLightDomElement {
                 query: this.query,
                 busy: this.busy,
                 iconUrls: this.iconUrls,
+                discoveryEntries: [
+                  ...this.discovery.featured,
+                  ...(this.discovery.result?.items ?? []),
+                ],
                 canMutate: this.canMutate(),
                 mutationBlockedReason: blockedReason,
                 consent: this.consentController.consent,

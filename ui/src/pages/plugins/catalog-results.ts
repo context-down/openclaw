@@ -42,13 +42,6 @@ export type PluginCatalogResultsProps = {
   onRetryFeatured: () => void;
 };
 
-const PINNED_CATEGORY_ORDER = new Map([
-  ["channels", 0],
-  ["models", 1],
-  ["memory", 2],
-  ["context", 3],
-]);
-
 const CATEGORY_ICONS: Readonly<Record<string, TemplateResult>> = {
   activity: icons.activity,
   "book-open": icons.book,
@@ -63,19 +56,6 @@ const CATEGORY_ICONS: Readonly<Record<string, TemplateResult>> = {
   shield: icons.shield,
   wrench: icons.settings,
 };
-
-function prioritizePluginCategories(
-  categories: readonly PluginDiscoveryCategory[],
-): PluginDiscoveryCategory[] {
-  return categories.toSorted((left, right) => {
-    const leftPinned = PINNED_CATEGORY_ORDER.get(left.slug);
-    const rightPinned = PINNED_CATEGORY_ORDER.get(right.slug);
-    if (leftPinned !== undefined || rightPinned !== undefined) {
-      return (leftPinned ?? Number.MAX_SAFE_INTEGER) - (rightPinned ?? Number.MAX_SAFE_INTEGER);
-    }
-    return left.order - right.order;
-  });
-}
 
 function categoryIcon(icon: string | undefined): TemplateResult {
   return (icon && CATEGORY_ICONS[icon]) || icons.box;
@@ -95,20 +75,20 @@ function stateLabel(plugin: PluginDiscoveryEntry): string {
   return t("pluginsPage.available");
 }
 
-function entryMeta(plugin: PluginDiscoveryEntry): TemplateResult {
-  const downloads = formatCount(plugin.catalog.downloads);
-  const installs = formatCount(plugin.catalog.installs);
-  return html`<div class="plugin-catalog-result__meta">
-    ${plugin.catalog.author ? html`<span>@${plugin.catalog.author}</span>` : nothing}
-    ${plugin.catalog.official ? html`<span>${t("pluginsPage.official")}</span>` : nothing}
-    ${plugin.catalog.verificationTier
-      ? html`<span>${plugin.catalog.verificationTier}</span>`
-      : nothing}
-    ${installs ? html`<span>${t("pluginsPage.installCount", { count: installs })}</span>` : nothing}
-    ${downloads
-      ? html`<span>${t("pluginsPage.downloadCount", { count: downloads })}</span>`
-      : nothing}
-  </div>`;
+function renderOfficialBadge(): TemplateResult {
+  return html`<span
+    class="plugin-official-badge"
+    aria-label=${t("pluginsPage.official")}
+    title=${t("pluginsPage.official")}
+    >${icons.badgeCheck}</span
+  >`;
+}
+
+function renderAuthor(plugin: PluginDiscoveryEntry): TemplateResult | typeof nothing {
+  if (!plugin.catalog.author) {
+    return nothing;
+  }
+  return html`<span class="plugin-card-author">@${plugin.catalog.author}</span>`;
 }
 
 function renderFeaturedCard(
@@ -132,11 +112,28 @@ function renderFeaturedCard(
         ${categoryIcon(plugin.catalog.icon)}
       </span>
       <div class="installed-plugins-card__identity">
-        <h3>${plugin.catalog.name}</h3>
-        <p>${plugin.catalog.summary || t("pluginsPage.optionalCapability")}</p>
+        <div class="plugin-card-title-row">
+          <h3>${plugin.catalog.name}</h3>
+          ${plugin.catalog.official ? renderOfficialBadge() : nothing}
+        </div>
+        ${renderAuthor(plugin)}
       </div>
     </div>
-    ${entryMeta(plugin)}
+    <p class="installed-plugins-card__summary">
+      ${plugin.catalog.summary || t("pluginsPage.optionalCapability")}
+    </p>
+    <div class="plugin-featured-card__footer">
+      <span class="plugin-featured-card__state" data-state=${plugin.local.state}
+        >${stateLabel(plugin)}</span
+      >
+      ${plugin.catalog.downloads === undefined
+        ? nothing
+        : html`<span class="plugin-featured-card__downloads">
+            ${t("pluginsPage.downloadCount", {
+              count: formatCount(plugin.catalog.downloads) ?? "0",
+            })}
+          </span>`}
+    </div>
   </a>`;
 }
 
@@ -195,7 +192,11 @@ function renderCategories(props: PluginCatalogResultsProps): TemplateResult {
       </button>
     </div>`;
   }
-  return html`<div class="plugin-catalog-categories" aria-label=${t("pluginsPage.categoriesLabel")}>
+  return html`<aside
+    class="plugin-catalog-categories"
+    aria-label=${t("pluginsPage.categoriesLabel")}
+  >
+    <h3>${t("pluginsPage.categoriesTitle")}</h3>
     <button
       type="button"
       class="plugin-catalog-category ${props.category === null ? "is-active" : ""}"
@@ -206,7 +207,7 @@ function renderCategories(props: PluginCatalogResultsProps): TemplateResult {
       <span>${t("pluginsPage.allCategories")}</span>
     </button>
     ${repeat(
-      prioritizePluginCategories(props.categories),
+      props.categories.toSorted((left, right) => left.order - right.order),
       (item) => item.slug,
       (item) => {
         const settingsHref = props.categorySettingsHref(item.slug);
@@ -239,7 +240,7 @@ function renderCategories(props: PluginCatalogResultsProps): TemplateResult {
         </div>`;
       },
     )}
-  </div>`;
+  </aside>`;
 }
 
 function renderResultRow(
@@ -265,12 +266,22 @@ function renderResultRow(
     <div class="plugin-catalog-result__identity">
       <div class="plugin-catalog-result__title-row">
         <h3>${plugin.catalog.name}</h3>
+        ${plugin.catalog.official ? renderOfficialBadge() : nothing}
         ${firstCategory
           ? html`<span class="plugin-catalog-result__category">${firstCategory}</span>`
           : nothing}
       </div>
       <p>${plugin.catalog.summary || t("pluginsPage.optionalCapability")}</p>
-      ${entryMeta(plugin)}
+      <div class="plugin-catalog-result__meta">
+        ${renderAuthor(plugin)}
+        ${plugin.catalog.downloads === undefined
+          ? nothing
+          : html`<span>
+              ${t("pluginsPage.downloadCount", {
+                count: formatCount(plugin.catalog.downloads) ?? "0",
+              })}
+            </span>`}
+      </div>
     </div>
     <span class="plugin-catalog-result__state" data-state=${plugin.local.state}>
       ${stateLabel(plugin)}
@@ -334,56 +345,58 @@ function renderExplorer(props: PluginCatalogResultsProps): TemplateResult {
             />
           </label>
         </div>
-        ${renderCategories(props)}
-        ${props.loading
-          ? renderSettingsLoadingSkeleton({
-              label: t("pluginsPage.loadingDiscovery"),
-              rows: 6,
-              carapace: true,
-            })
-          : props.error
-            ? html`<div class="callout danger oc-banner oc-banner-error" role="alert">
-                <span>${formatUiExternalText(props.error)}</span>
-                <button
-                  type="button"
-                  class="btn btn--sm oc-action oc-action-secondary oc-banner-action"
-                  @click=${props.onRetry}
+        <div class="plugin-catalog-layout">
+          ${renderCategories(props)}
+          <div class="plugin-catalog-layout__results">
+            ${props.loading
+              ? renderSettingsLoadingSkeleton({
+                  label: t("pluginsPage.loadingDiscovery"),
+                  rows: 6,
+                  carapace: true,
+                })
+              : props.error
+                ? html`<div class="callout danger oc-banner oc-banner-error" role="alert">
+                    <span>${formatUiExternalText(props.error)}</span>
+                    <button
+                      type="button"
+                      class="btn btn--sm oc-action oc-action-secondary oc-banner-action"
+                      @click=${props.onRetry}
+                    >
+                      ${t("pluginsPage.tryAgain")}
+                    </button>
+                  </div>`
+                : !props.connected
+                  ? html`<p class="plugin-catalog-results__empty">
+                      ${t("pluginsPage.discoveryOffline")}
+                    </p>`
+                  : visibleItems.length === 0
+                    ? html`<p class="plugin-catalog-results__empty">
+                        ${t("pluginsPage.noDiscoveryResults")}
+                      </p>`
+                    : html`<div class="plugin-catalog-results__list">
+                        ${repeat(
+                          visibleItems,
+                          (plugin) => plugin.id,
+                          (plugin) => renderResultRow(plugin, props),
+                        )}
+                      </div>`}
+            ${props.result?.nextCursor
+              ? html`<div
+                  class="plugin-catalog-results__more"
+                  ${ref((element) => props.onLoadMoreTarget(element))}
                 >
-                  ${t("pluginsPage.tryAgain")}
-                </button>
-              </div>`
-            : !props.connected
-              ? html`<p class="plugin-catalog-results__empty">
-                  ${t("pluginsPage.discoveryOffline")}
-                </p>`
-              : visibleItems.length === 0
-                ? html`<p class="plugin-catalog-results__empty">
-                    ${t("pluginsPage.noDiscoveryResults")}
-                  </p>`
-                : html`<div class="plugin-catalog-results__list">
-                    ${repeat(
-                      visibleItems,
-                      (plugin) => plugin.id,
-                      (plugin) => renderResultRow(plugin, props),
-                    )}
-                  </div>`}
-        ${props.result?.nextCursor
-          ? html`<div
-              class="plugin-catalog-results__more"
-              ${ref((element) => props.onLoadMoreTarget(element))}
-            >
-              <button
-                type="button"
-                class="btn btn--sm oc-action oc-action-ghost"
-                ?disabled=${props.loadingMore}
-                @click=${props.onLoadMore}
-              >
-                ${props.loadingMore ? t("pluginsPage.loadingMore") : t("pluginsPage.loadMore")}
-              </button>
-            </div>`
-          : props.result && visibleItems.length > 0
-            ? html`<p class="plugin-catalog-results__terminal">${t("pluginsPage.catalogEnd")}</p>`
-            : nothing}
+                  <button
+                    type="button"
+                    class="btn btn--sm oc-action oc-action-ghost"
+                    ?disabled=${props.loadingMore}
+                    @click=${props.onLoadMore}
+                  >
+                    ${props.loadingMore ? t("pluginsPage.loadingMore") : t("pluginsPage.loadMore")}
+                  </button>
+                </div>`
+              : nothing}
+          </div>
+        </div>
       </section>
     `,
     { wide: true, carapace: true },
