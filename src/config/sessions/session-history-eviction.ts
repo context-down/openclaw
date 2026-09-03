@@ -214,13 +214,13 @@ function isRecentHistoricalSessionId(params: {
   );
 }
 
-function collectCandidateProtectedHistoricalSessionIds(params: {
+function collectCandidateAdditionalProtection(params: {
   database: OpenClawAgentDatabase;
   preserveRecentMs?: number | null;
   sessionId: string;
   storePath: string;
 }): Set<string> {
-  const protectedSessionIds = collectProtectedHistoricalSessionIds(params);
+  const protectedSessionIds = collectAdmissionProtectedSessionIds(params);
   if (isRecentHistoricalSessionId(params)) {
     protectedSessionIds.add(params.sessionId);
   }
@@ -541,12 +541,15 @@ async function enforceSessionHistoryMaintenanceSerialized(
         const plan = await runExclusiveSqliteSessionWrite(resolved, async () => {
           // openclaw-agent-db.ts cache rule: LRU eviction closes idle handles across awaits.
           const database = openOpenClawAgentDatabase(databaseOptions);
-          const protectedBeforeArchive = collectCandidateProtectedHistoricalSessionIds({
+          const protectedBeforeArchive = collectCandidateAdditionalProtection({
             database,
             preserveRecentMs: params.maintenance.preserveRecentMs,
             sessionId,
             storePath: params.storePath,
           });
+          for (const referenced of readReferencedSessionIds(database, undefined, [sessionId])) {
+            protectedBeforeArchive.add(referenced);
+          }
           return planSessionStateDeleteIfUnreferenced({
             archiveDirectory,
             archiveTranscript: true,
@@ -568,7 +571,7 @@ async function enforceSessionHistoryMaintenanceSerialized(
             const reclamationPlan = createHistoryEvictionReclamationPlan({
               databaseOptions,
               materializedPlans: materialized,
-              protectedSessionIds: collectCandidateProtectedHistoricalSessionIds({
+              protectedSessionIds: collectCandidateAdditionalProtection({
                 database,
                 preserveRecentMs: params.maintenance.preserveRecentMs,
                 sessionId,
