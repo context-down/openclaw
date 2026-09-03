@@ -19,7 +19,7 @@ import {
   setSetupGraceTimeoutMsForTests,
 } from "./config.js";
 import { resolveRecallEscalationDecision } from "./escalation.js";
-import { buildMetadata, buildPromptPrefix, buildRecallOutcomePrefix } from "./prompt.js";
+import { buildPromptPrefix, buildRecallOutcomePrefix } from "./prompt.js";
 import { buildQuery, buildSearchQuery, extractRecentTurns, getModelRef } from "./query.js";
 import {
   buildCacheKey,
@@ -30,7 +30,6 @@ import {
   isCircuitBreakerOpen,
   resetActiveRecallStateForTests,
   setCachedResult,
-  shouldCacheResult,
   toSingleLineErrorMessage,
 } from "./recall-state.js";
 import { maybeResolveActiveRecall } from "./recall.js";
@@ -53,7 +52,6 @@ import {
   updateActiveMemoryGlobalEnabledInConfig,
 } from "./session-policy.js";
 import {
-  buildPluginStatusLine,
   persistPluginStatusLines,
   resolveCanonicalSessionKeyFromSessionId,
   resolveStatusUpdateAgentId,
@@ -560,12 +558,8 @@ export default definePluginEntry({
 });
 
 const testing = {
-  buildSearchQuery,
   buildCacheKey,
   buildCircuitBreakerKey,
-  buildMetadata,
-  buildPluginStatusLine,
-  buildPromptPrefix,
   getCachedResult,
   hasUsableMemoryResultInSessionRecord,
   isCircuitBreakerOpen,
@@ -573,7 +567,6 @@ const testing = {
   normalizePluginConfig,
   readActiveMemorySearchDebug,
   readPartialAssistantText,
-  shouldCacheResult,
   resetActiveRecallCacheForTests() {
     resetActiveRecallStateForTests();
     resetActiveMemoryConfigForTests();
