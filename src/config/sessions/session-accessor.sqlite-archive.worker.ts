@@ -7,7 +7,7 @@ import { pipeline } from "node:stream/promises";
 import { parentPort, workerData } from "node:worker_threads";
 import zlib from "node:zlib";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../../infra/kysely-sync.js";
-import { withOpenClawAgentDatabaseReadOnly } from "../../state/openclaw-agent-db-readonly.js";
+import { withFreshOpenClawAgentDatabaseReadOnly } from "../../state/openclaw-agent-db-readonly-fresh.js";
 import type { DB as OpenClawAgentKyselyDatabase } from "../../state/openclaw-agent-db.generated.js";
 import {
   settleOpenClawAgentDatabaseWorkerClose,
@@ -24,7 +24,7 @@ import {
   type TranscriptArchiveWorkerMessage,
   type TranscriptArchiveWorkerPlan,
   type TranscriptArchiveWorkerResult,
-} from "./session-accessor.sqlite-archive.js";
+} from "./session-accessor.sqlite-archive-files.js";
 import {
   readSessionStateDeleteSnapshot,
   sqliteSessionStateDeleteSnapshotsEqual,
@@ -283,7 +283,7 @@ export async function materializeTranscriptArchiveInWorker(
     sessionId: plan.sessionId,
   })}.${randomUUID()}.jsonl-stage`;
   try {
-    const opened = withOpenClawAgentDatabaseReadOnly(
+    const opened = withFreshOpenClawAgentDatabaseReadOnly(
       (database) => {
         let transactionOpen = false;
         try {
@@ -340,7 +340,7 @@ export function publishTranscriptArchiveInWorker(
   plan: TranscriptArchivePublishPlan,
 ): TranscriptArchivePublishResult {
   try {
-    const opened = withOpenClawAgentDatabaseReadOnly(
+    const opened = withFreshOpenClawAgentDatabaseReadOnly(
       (database) => {
         const db = getNodeSqliteKysely<TranscriptArchiveDatabase>(database.db);
         return executeSqliteQuerySync(
