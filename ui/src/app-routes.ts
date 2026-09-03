@@ -19,6 +19,7 @@ import {
   memoryTabFromPath,
   pathForAgentPanel,
   pathForRoute,
+  pluginCatalogIdFromPath,
   pluginSettingsIdFromPath,
   routeIdFromPath,
   sessionRouteNamespaceFromPath,
@@ -146,6 +147,9 @@ function dynamicRouteFromPath(pathname: string, basePath: string): DynamicRoute 
     return ["memory", INTERNAL_MEMORY_PATH_PARAM, pathname];
   }
   if (isLegacyPluginsDiscoveryPath(pathname, basePath)) {
+    return ["plugins", INTERNAL_PLUGINS_PATH_PARAM, pathname];
+  }
+  if (pluginCatalogIdFromPath(pathname, basePath)) {
     return ["plugins", INTERNAL_PLUGINS_PATH_PARAM, pathname];
   }
   if (pluginSettingsIdFromPath(pathname, basePath)) {

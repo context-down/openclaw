@@ -213,6 +213,23 @@ export function isLegacyPluginsDiscoveryPath(pathname: string, basePath = ""): b
   return normalizedPath === `${pathForRoute("plugin-settings", basePath)}/discover`;
 }
 
+export function pathForPluginCatalogEntry(id: string, basePath = ""): string {
+  if (!/^[A-Za-z0-9_-]+$/u.test(id)) {
+    throw new Error("Invalid plugin catalog id for a route path.");
+  }
+  return `${pathForRoute("plugins", basePath)}/${id}`;
+}
+
+export function pluginCatalogIdFromPath(pathname: string, basePath = ""): string | null {
+  const normalizedPath = normalizePath(pathname);
+  const prefix = `${pathForRoute("plugins", basePath)}/`;
+  if (!normalizedPath.startsWith(prefix)) {
+    return null;
+  }
+  const id = normalizedPath.slice(prefix.length);
+  return /^[A-Za-z0-9_-]+$/u.test(id) ? id : null;
+}
+
 export function pathForPluginSettings(pluginId: string, basePath = ""): string {
   if (!pluginId || pluginId === "." || pluginId === "..") {
     throw new Error("Invalid plugin id for a route path.");
@@ -313,6 +330,9 @@ export function routeIdFromPath(pathname: string, basePath = ""): RouteId | null
     return "memory";
   }
   if (isLegacyPluginsDiscoveryPath(normalizedPath, normalizedBasePath)) {
+    return "plugins";
+  }
+  if (pluginCatalogIdFromPath(normalizedPath, normalizedBasePath)) {
     return "plugins";
   }
   if (pluginSettingsIdFromPath(normalizedPath, normalizedBasePath)) {

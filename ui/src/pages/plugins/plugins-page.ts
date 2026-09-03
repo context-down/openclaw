@@ -1,19 +1,15 @@
 import { consume } from "@lit/context";
 import { initialState, Task, TaskStatus } from "@lit/task";
-import type { RouteLocation } from "@openclaw/uirouter";
 import { html, nothing, type PropertyValues } from "lit";
 import { property, state } from "lit/decorators.js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import {
+  pathForPluginCatalogEntry,
   pathForPluginSettings,
   pathForRoute,
   pluginSettingsIdFromPath,
 } from "../../app-route-paths.ts";
-import {
-  applicationContext,
-  type ApplicationContext,
-  type ApplicationGatewaySnapshot,
-} from "../../app/context.ts";
+import { applicationContext, type ApplicationContext } from "../../app/context.ts";
 import { resolveControlUiAuthCandidates } from "../../app/control-ui-auth.ts";
 import { hasOperatorAdminAccess } from "../../app/operator-access.ts";
 import { analyzeConfigSchema } from "../../components/config-form.ts";
@@ -23,8 +19,6 @@ import { formatUiError, formatUiExternalText } from "../../lib/format-error.ts";
 import { inspectPlugin } from "../../lib/plugins/capability-consent-error.ts";
 import {
   uninstallPlugin,
-  type PluginCatalogItem,
-  type PluginDiscoveryResult,
   type PluginListResult,
   type PluginMutationResult,
   type PluginsInspectResult,
@@ -39,12 +33,19 @@ import "../../styles/plugins.css";
 import { renderPluginCatalogResults } from "./catalog-results.ts";
 import { renderPluginConsentDialog } from "./consent-dialog.ts";
 import { renderInstalledPlugins } from "./installed-plugins.ts";
+import { PluginDiscoveryController } from "./plugin-discovery-controller.ts";
 import { PluginIconController } from "./plugin-icon-controller.ts";
 import { confirmPluginUninstall } from "./plugin-lifecycle-confirmation.ts";
 import type { PluginRowMessage } from "./plugin-row-message.ts";
 import { PluginsConsentController } from "./plugins-consent-controller.ts";
 import { renderPluginsHubHeader } from "./plugins-hub-header.ts";
 import { PLUGINS_HUB_PANEL_ID, type PluginsHubTab } from "./plugins-hub.ts";
+import {
+  mergePluginCatalogItem,
+  pluginCategorySettingsRoute,
+  pluginMutationBlockedReason,
+} from "./plugins-page-model.ts";
+import type { PluginsRouteData } from "./route-data.ts";
 import { pluginAdvancedSchema, pluginConfigSchema } from "./settings-model.ts";
 import {
   renderPluginSettingsDetail,
@@ -53,31 +54,6 @@ import {
 } from "./settings-view.ts";
 
 type PluginsPageSurface = "discovery" | "settings";
-
-export type PluginsRouteData = {
-  gateway: ApplicationContext["gateway"];
-  gatewaySnapshot: ApplicationGatewaySnapshot;
-  result: PluginListResult | null;
-  error: string | null;
-  location: RouteLocation;
-};
-
-function withPlugin(
-  current: PluginListResult | null,
-  plugin: PluginCatalogItem,
-): PluginListResult | null {
-  if (!current) {
-    return current;
-  }
-  const existingIndex = current.plugins.findIndex((entry) => entry.id === plugin.id);
-  const plugins = [...current.plugins];
-  if (existingIndex >= 0) {
-    plugins[existingIndex] = plugin;
-  } else {
-    plugins.push(plugin);
-  }
-  return { ...current, plugins };
-}
 
 class PluginsPage extends OpenClawLightDomElement {
   @consume({ context: applicationContext, subscribe: true })
@@ -88,8 +64,6 @@ class PluginsPage extends OpenClawLightDomElement {
 
   @state() private result: PluginListResult | null = null;
   @state() private error: string | null = null;
-  @state() private discoveryResult: PluginDiscoveryResult | null = null;
-  @state() private discoveryError: string | null = null;
   @state() private query = "";
   @state() private settingsTab: PluginSettingsTab = "installed";
   @state() private inventoryExpanded = false;
@@ -131,14 +105,18 @@ class PluginsPage extends OpenClawLightDomElement {
       this.preserveMessageKeyOnReconnect = null;
       this.result = null;
       this.error = null;
-      this.discoveryResult = null;
-      this.discoveryError = null;
       this.messages = preservedKey && preservedMessage ? { [preservedKey]: preservedMessage } : {};
       this.pageNotice = null;
     },
     invalidateRequests: (change) =>
       this.invalidateRequests(change.snapshot.phase !== "connected" || !change.snapshot.client),
     onSnapshot: (change) => this.handleGatewaySnapshot(change),
+  });
+  private readonly discovery = new PluginDiscoveryController(this, {
+    getClient: () => this.gateway.client,
+    isConnected: () => this.gateway.connected,
+    capture: () => this.gateway.capture(),
+    isCurrent: (scope) => this.gateway.isCurrent(scope),
   });
 
   private readonly consentController = new PluginsConsentController({
@@ -188,25 +166,6 @@ class PluginsPage extends OpenClawLightDomElement {
     },
   });
 
-  private readonly discoveryTask = new Task(this, {
-    autoRun: false,
-    args: () => [this.gateway.connected ? this.gateway.client : null] as const,
-    task: ([client], { signal }) =>
-      client
-        ? client.request<PluginDiscoveryResult>(
-            "plugins.catalog.browse",
-            { intent: "all", pageSize: 12 },
-            { signal },
-          )
-        : initialState,
-    onComplete: (result) => {
-      this.discoveryResult = result;
-    },
-    onError: (error) => {
-      this.discoveryError = formatUiError(error);
-    },
-  });
-
   private readonly subscriptions = new SubscriptionsController(this).effect(
     () => (this.surface === "settings" ? this.context?.runtimeConfig : null),
     (runtimeConfig) => {
@@ -239,6 +198,7 @@ class PluginsPage extends OpenClawLightDomElement {
 
   override disconnectedCallback() {
     document.removeEventListener("keydown", this.handleDocumentKeydown, true);
+    this.discovery.disconnect();
     this.subscriptions.clear();
     this.pluginIcons.reset();
     super.disconnectedCallback();
@@ -304,7 +264,9 @@ class PluginsPage extends OpenClawLightDomElement {
     if (shouldRefreshAfterChange) {
       void this.refreshCatalog();
       if (this.surface === "discovery") {
-        void this.refreshDiscovery();
+        void this.discovery.refresh();
+        void this.discovery.refreshCategories();
+        void this.discovery.refreshFeatured();
       }
     } else {
       this.ensureInitialData();
@@ -345,9 +307,7 @@ class PluginsPage extends OpenClawLightDomElement {
   private invalidateRequests(invalidateCatalog = true) {
     if (invalidateCatalog) {
       void this.catalogTask.run([null]);
-      void this.discoveryTask.run([null]);
-      this.discoveryResult = null;
-      this.discoveryError = null;
+      this.discovery.invalidate();
     }
     // Inspection results belong to one connection epoch, including same-client reconnects.
     this.detail = null;
@@ -368,10 +328,6 @@ class PluginsPage extends OpenClawLightDomElement {
     return this.gateway.connected && this.catalogTask.status === TaskStatus.PENDING;
   }
 
-  private get discoveryLoading(): boolean {
-    return this.gateway.connected && this.discoveryTask.status === TaskStatus.PENDING;
-  }
-
   private ensureInitialData() {
     if (
       !this.gateway.connected ||
@@ -383,13 +339,8 @@ class PluginsPage extends OpenClawLightDomElement {
     if (!this.loading && !this.result && !this.error) {
       void this.refreshCatalog();
     }
-    if (
-      this.surface === "discovery" &&
-      this.discoveryTask.status === TaskStatus.INITIAL &&
-      !this.discoveryResult &&
-      !this.discoveryError
-    ) {
-      void this.refreshDiscovery();
+    if (this.surface === "discovery") {
+      this.discovery.ensureInitial();
     }
   }
 
@@ -400,15 +351,6 @@ class PluginsPage extends OpenClawLightDomElement {
     }
     this.error = null;
     await this.catalogTask.run([client]);
-  }
-
-  private async refreshDiscovery(): Promise<void> {
-    const client = this.gateway.client;
-    if (!client || !this.gateway.connected) {
-      return;
-    }
-    this.discoveryError = null;
-    await this.discoveryTask.run([client]);
   }
 
   private selectHubTab(tab: PluginsHubTab) {
@@ -422,17 +364,11 @@ class PluginsPage extends OpenClawLightDomElement {
   }
 
   private mutationBlockedReason(): string | null {
-    if (!this.gateway.connected) {
-      return t("pluginsPage.connectToChange");
-    }
-    const auth = this.context.gateway.snapshot.hello?.auth ?? null;
-    if (!hasOperatorAdminAccess(auth)) {
-      return t("pluginsPage.adminRequired");
-    }
-    if (this.result && !this.result.mutationAllowed) {
-      return t("pluginsPage.changesDisabled");
-    }
-    return null;
+    return pluginMutationBlockedReason({
+      connected: this.gateway.connected,
+      hasAdminAccess: hasOperatorAdminAccess(this.context.gateway.snapshot.hello?.auth ?? null),
+      mutationAllowed: this.result?.mutationAllowed,
+    });
   }
 
   private canMutate(): boolean {
@@ -440,17 +376,11 @@ class PluginsPage extends OpenClawLightDomElement {
   }
 
   private configBlockedReason(): string | null {
-    const configState = this.context.runtimeConfig.state;
-    if (!configState.connected) {
-      return t("pluginsPage.connectToChange");
-    }
-    if (!hasOperatorAdminAccess(this.context.gateway.snapshot.hello?.auth ?? null)) {
-      return t("pluginsPage.adminRequired");
-    }
-    if (!this.context.runtimeConfig.canSet) {
-      return t("pluginsPage.changesDisabled");
-    }
-    return null;
+    return pluginMutationBlockedReason({
+      connected: this.context.runtimeConfig.state.connected,
+      hasAdminAccess: hasOperatorAdminAccess(this.context.gateway.snapshot.hello?.auth ?? null),
+      mutationAllowed: this.context.runtimeConfig.canSet,
+    });
   }
 
   private canEditConfig(): boolean {
@@ -479,7 +409,7 @@ class PluginsPage extends OpenClawLightDomElement {
 
   private applyMutationResult(result: PluginMutationResult) {
     this.pluginIcons.invalidate(result.plugin.id);
-    this.replaceResult(withPlugin(this.result, result.plugin), true);
+    this.replaceResult(mergePluginCatalogItem(this.result, result.plugin), true);
   }
 
   /** Plugin changes can affect both catalog state and route visibility (for example Workboard). */
@@ -657,10 +587,42 @@ class PluginsPage extends OpenClawLightDomElement {
                 onRetryConsentInspection: () => void this.consentController.inspect(),
               })}${renderPluginCatalogResults({
                 connected: this.gateway.connected,
-                loading: this.discoveryLoading,
-                result: this.discoveryResult,
-                error: this.discoveryError,
-                onRetry: () => void this.refreshDiscovery(),
+                loading: this.discovery.loading,
+                loadingMore: this.discovery.loadingMore,
+                result: this.discovery.result,
+                error: this.discovery.error,
+                categories: this.discovery.categories,
+                categoriesError: this.discovery.categoriesError,
+                featured: this.discovery.featured,
+                featuredLoading: this.discovery.featuredLoading,
+                featuredError: this.discovery.featuredError,
+                intent: this.discovery.intent,
+                category: this.discovery.category,
+                query: this.discovery.query,
+                entryHref: (id) => pathForPluginCatalogEntry(id, this.context.basePath),
+                categorySettingsHref: (slug) => {
+                  const route = pluginCategorySettingsRoute(slug);
+                  return route ? pathForRoute(route, this.context.basePath) : null;
+                },
+                onIntentChange: (intent) => this.discovery.selectIntent(intent),
+                onCategoryChange: (category) => this.discovery.selectCategory(category),
+                onQueryChange: (query) => this.discovery.updateQuery(query),
+                onOpenEntry: (id) => {
+                  this.context.navigate("plugins", {
+                    pathname: pathForPluginCatalogEntry(id, this.context.basePath),
+                  });
+                },
+                onOpenCategorySettings: (slug) => {
+                  const route = pluginCategorySettingsRoute(slug);
+                  if (route) {
+                    this.context.navigate(route);
+                  }
+                },
+                onLoadMoreTarget: (element) => this.discovery.observeLoadMore(element),
+                onLoadMore: () => void this.discovery.loadMore(),
+                onRetry: () => void this.discovery.refresh(),
+                onRetryCategories: () => void this.discovery.refreshCategories(),
+                onRetryFeatured: () => void this.discovery.refreshFeatured(),
               })}</wa-tab-panel
             >`
           : detailPluginId
