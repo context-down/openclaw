@@ -3052,6 +3052,7 @@ export const en: TranslationMap & {
     exploreDescription: "Browse plugins available from ClawHub.",
     loadingDiscovery: "Loading ClawHub plugins…",
     discoveryOffline: "Connect to browse plugins from ClawHub.",
+    noDiscoveryResults: "No ClawHub plugins match this view.",
     downloadCount: "{count} downloads",
     installed: "Installed",
     pluginSettings: "Plugin settings",

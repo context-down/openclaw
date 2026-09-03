@@ -303,6 +303,9 @@ class PluginsPage extends OpenClawLightDomElement {
     }
     if (shouldRefreshAfterChange) {
       void this.refreshCatalog();
+      if (this.surface === "discovery") {
+        void this.refreshDiscovery();
+      }
     } else {
       this.ensureInitialData();
     }

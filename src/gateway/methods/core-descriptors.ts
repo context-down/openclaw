@@ -412,9 +412,6 @@ const CORE_GATEWAY_METHOD_SPECS = [
   ["tts.speak", "tts", "operator.write", "2026.7"],
   ["plugins.list", "plugins", "operator.read", "<=2026.7"],
   ["plugins.search", "plugins", "operator.read", "<=2026.7"],
-  ["plugins.catalog.browse", "plugins", "operator.read", "2026.9"],
-  ["plugins.catalog.categories", "plugins", "operator.read", "2026.9"],
-  ["plugins.catalog.get", "plugins", "operator.read", "2026.9"],
   ["plugins.install", "plugins", "operator.admin", "<=2026.7", { controlPlaneWrite: true }],
   ["plugins.setEnabled", "plugins", "operator.admin", "<=2026.7", { controlPlaneWrite: true }],
   ["plugins.uninstall", "plugins", "operator.admin", "<=2026.7", { controlPlaneWrite: true }],
@@ -665,6 +662,9 @@ const CORE_GATEWAY_METHOD_SPECS = [
   ["transcripts.list", "transcripts", "operator.read", "2026.8"],
   ["transcripts.get", "transcripts", "operator.read", "2026.8"],
   ["models.authOrderSet", "models-auth-order", "operator.admin", "2026.8", CONTROL_PLANE_WRITE],
+  ["plugins.catalog.browse", "plugins", "operator.read", "2026.9"],
+  ["plugins.catalog.categories", "plugins", "operator.read", "2026.9"],
+  ["plugins.catalog.get", "plugins", "operator.read", "2026.9"],
 ] as const satisfies readonly CoreGatewayMethodSpecRow[];
 
 export type CoreGatewayHandlerFamily = Exclude<(typeof CORE_GATEWAY_METHOD_SPECS)[number][1], null>;

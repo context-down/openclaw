@@ -138,6 +138,11 @@ describe("listGatewayMethods", () => {
     "transcripts.get",
     "models.authOrderSet",
   ];
+  const pluginDiscoveryMethods = [
+    "plugins.catalog.browse",
+    "plugins.catalog.categories",
+    "plugins.catalog.get",
+  ];
 
   it("advertises plugin surface refresh for capability rotation", () => {
     expect(listGatewayMethods()).toContain("plugin.surface.refresh");
@@ -159,9 +164,8 @@ describe("listGatewayMethods", () => {
   });
 
   it("appends new methods after model probing without shifting older method indices", () => {
-    expect(listGatewayMethods().slice(-expectedMethodsAfterModelProbe.length)).toEqual(
-      expectedMethodsAfterModelProbe,
-    );
+    const expectedSuffix = [...expectedMethodsAfterModelProbe, ...pluginDiscoveryMethods];
+    expect(listGatewayMethods().slice(-expectedSuffix.length)).toEqual(expectedSuffix);
     const methods = listGatewayMethods();
     expect(methods.indexOf("node.pluginSurface.refresh")).toBe(
       methods.indexOf("node.describe") + 1,
@@ -302,6 +306,7 @@ describe("listGatewayMethods", () => {
       "sessions.dispatch",
       "sessions.reclaim",
       ...expectedMethodsAfterModelProbe,
+      ...pluginDiscoveryMethods,
     ];
     expect(coreMethods.slice(-expectedCoreSuffix.length)).toEqual(expectedCoreSuffix);
     expect(methods.indexOf("approval.get")).toBeGreaterThan(methods.indexOf("tts.speak"));
@@ -345,6 +350,15 @@ describe("listGatewayMethods", () => {
     expect(methods.indexOf("progressCard.put")).toBe(methods.indexOf("progressCard.get") + 1);
     expect(methods.indexOf("session.members.listEvidence")).toBe(
       methods.indexOf("diagnostics.lanes") + 1,
+    );
+    expect(methods.indexOf("plugins.catalog.browse")).toBe(
+      methods.indexOf("models.authOrderSet") + 1,
+    );
+    expect(methods.indexOf("plugins.catalog.categories")).toBe(
+      methods.indexOf("plugins.catalog.browse") + 1,
+    );
+    expect(methods.indexOf("plugins.catalog.get")).toBe(
+      methods.indexOf("plugins.catalog.categories") + 1,
     );
   });
 

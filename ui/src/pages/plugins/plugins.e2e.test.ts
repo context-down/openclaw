@@ -686,4 +686,54 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
       await context.close();
     }
   });
+
+  it("explains a successful empty ClawHub response", async () => {
+    const context = await newContext();
+    const page = await context.newPage();
+    await installMockGateway(page, {
+      featureMethods: pluginMethods,
+      methodResponses: {
+        ...pluginMethodResponses(),
+        "plugins.catalog.browse": { items: [] },
+      },
+    });
+
+    try {
+      await page.goto(`${server.baseUrl}plugins`);
+      await page.getByText("No ClawHub plugins match this view.", { exact: true }).waitFor();
+      expect(await page.locator(".plugin-catalog-result").count()).toBe(0);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("reloads ClawHub discovery after the Gateway reconnects", async () => {
+    const context = await newContext();
+    const page = await context.newPage();
+    const gateway = await installMockGateway(page, {
+      featureMethods: pluginMethods,
+      methodResponses: pluginMethodResponses(),
+    });
+
+    try {
+      await page.goto(`${server.baseUrl}plugins`);
+      await page.locator(".plugin-catalog-result", { hasText: "Memory Plus" }).waitFor();
+      const requestsBeforeReconnect = (await gateway.getRequests("plugins.catalog.browse")).length;
+      await gateway.setMethodResponse("plugins.catalog.browse", {
+        items: [
+          {
+            ...discoveryResult.items[0],
+            catalog: { ...discoveryResult.items[0].catalog, name: "Memory Reconnected" },
+          },
+        ],
+      });
+
+      await gateway.setOnline(false);
+      await gateway.setOnline(true);
+      await gateway.waitForRequest("plugins.catalog.browse", { after: requestsBeforeReconnect });
+      await page.locator(".plugin-catalog-result", { hasText: "Memory Reconnected" }).waitFor();
+    } finally {
+      await context.close();
+    }
+  });
 });
