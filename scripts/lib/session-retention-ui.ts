@@ -308,7 +308,11 @@ export async function proveRetentionUi(params: {
       .locator(".agent-chat__composer-combobox textarea")
       .fill("Please confirm this restored synthetic retention conversation.");
     await pane.getByRole("button", { name: "Send message", exact: true }).click();
-    await pane.getByText(params.marker, { exact: true }).waitFor({ state: "visible" });
+    // The live-region announcement mirrors the reply; verify the visible assistant transcript.
+    await pane
+      .locator(".chat-group.assistant .chat-text")
+      .getByText(params.marker, { exact: true })
+      .waitFor({ state: "visible" });
     await screenshot("08-normal-provider-continuation");
     const history = await rpc("chat.history", {
       sessionKey: row.key,
