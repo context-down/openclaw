@@ -18,6 +18,7 @@ function createDelegationHarness(params?: {
   runAgentConsult?: ConsultRunner;
   handleDelegationInput?: RealtimeVoiceGatewayControl["handleDelegationInput"];
   getSocket?: () => FakeSocket;
+  onWireEventType?: (eventType: string) => void;
 }) {
   const socket = new FakeSocket("manual");
   socket.readyState = 1;
@@ -31,6 +32,7 @@ function createDelegationHarness(params?: {
     logger,
     model: "gpt-live-test-private",
     onFatalError,
+    onWireEventType: params?.onWireEventType,
     runAgentConsult,
     signal: sessionController.signal,
   });
@@ -256,6 +258,23 @@ describe("GPT-Live sideband protocol", () => {
         JSON.stringify({ type: "turn.done", turn: { role: "user", transcript: "hello" } }),
       ),
     ).toEqual({ kind: "transcript-done", role: "user", text: "hello" });
+  });
+
+  it("forwards only classified sideband event types", () => {
+    const onWireEventType = vi.fn();
+    const { controller } = createDelegationHarness({ onWireEventType });
+
+    controller.handleFrame(Buffer.from(JSON.stringify({ type: "sensitive-private-event" })), false);
+    controller.handleFrame(Buffer.from(JSON.stringify({ type: "session.updated" })), false);
+    controller.handleFrame(
+      Buffer.from(JSON.stringify({ type: "output_audio_buffer.cleared" })),
+      false,
+    );
+
+    expect(onWireEventType.mock.calls).toEqual([
+      ["session.updated"],
+      ["output_audio_buffer.cleared"],
+    ]);
   });
 
   it("parses client delegations and ignores non-client targets", () => {

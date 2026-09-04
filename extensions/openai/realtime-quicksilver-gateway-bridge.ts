@@ -438,8 +438,12 @@ export class OpenAIQuicksilverGatewayBridge implements RealtimeVoiceBridge {
     this.teardown("error", () => this.config.onError?.(redactedError));
   }
 
-  private redactError(_error: unknown): Error {
-    return new Error(projectOpenAIQuicksilverErrorMessage("gateway"));
+  private redactError(error: unknown): Error {
+    const projected = new Error(projectOpenAIQuicksilverErrorMessage("gateway"));
+    if (error instanceof Error && error.name === "TimeoutError") {
+      projected.name = "TimeoutError";
+    }
+    return projected;
   }
 
   private teardown(

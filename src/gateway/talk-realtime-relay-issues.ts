@@ -39,10 +39,6 @@ export function buildTalkRealtimeRelayIssuePayload(
   };
 }
 
-export function projectTalkRealtimeRelayProviderError(
-  message: string,
-  configuredModel: string | undefined,
-  publicModel: string | undefined,
-): string {
-  return configuredModel && configuredModel !== publicModel ? "Realtime provider error." : message;
+export function projectTalkRealtimeRelayProviderError(): string {
+  return "Realtime provider error.";
 }

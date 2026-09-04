@@ -590,7 +590,7 @@ describe("talk realtime gateway relay", () => {
         request.onError?.(new Error("provider rejected session"));
         request.onClose?.("error");
       },
-      expectedError: "provider rejected session",
+      expectedError: "Realtime provider error.",
     },
     {
       name: "close before error",
@@ -2069,7 +2069,7 @@ describe("talk realtime gateway relay", () => {
     expectRecordFields(errorPayload, {
       relaySessionId: session.relaySessionId,
       type: "error",
-      message: "OpenAI API key rejected with 401",
+      message: "Realtime provider error.",
       code: "realtime_unavailable",
       provider: "openai",
       model: "gpt-realtime-2",
@@ -2188,8 +2188,10 @@ describe("talk realtime gateway relay", () => {
     });
   });
 
-  it("omits an opaque model from relay descriptors and error events", () => {
-    const model = "gpt-live-test-private";
+  it.each([
+    { name: "opaque", hideModel: true, model: "gpt-live-test-private" },
+    { name: "public", hideModel: false, model: "gpt-realtime-test-public" },
+  ])("redacts provider details for a $name relay model", ({ hideModel, model }) => {
     const sensitiveDetails = ["sensitive-route", "sensitive-session", "sensitive-transcript"];
     let bridgeRequest: RealtimeVoiceBridgeCreateRequest | undefined;
     const provider: RealtimeVoiceProviderPlugin = {
@@ -2200,13 +2202,17 @@ describe("talk realtime gateway relay", () => {
         bridgeRequest = request;
         return makeRelayTransport();
       },
-      [Symbol.for("openclaw.internal.realtime-voice-provider.v1")]: {
-        isBrowserSessionConfigured: () => true,
-        projectPublicConfig: ({ config }: { config: Record<string, unknown> }) => {
-          const { model: _model, ...publicConfig } = config;
-          return publicConfig;
-        },
-      },
+      ...(hideModel
+        ? {
+            [Symbol.for("openclaw.internal.realtime-voice-provider.v1")]: {
+              isBrowserSessionConfigured: () => true,
+              projectPublicConfig: ({ config }: { config: Record<string, unknown> }) => {
+                const { model: _model, ...publicConfig } = config;
+                return publicConfig;
+              },
+            },
+          }
+        : {}),
     };
     const events: Array<{ payload: unknown }> = [];
     const context = {
@@ -2226,10 +2232,14 @@ describe("talk realtime gateway relay", () => {
     });
     bridgeRequest?.onError?.(new Error(`provider rejected ${model} ${sensitiveDetails.join(" ")}`));
 
-    expect(session).not.toHaveProperty("model");
+    if (hideModel) {
+      expect(session).not.toHaveProperty("model");
+    } else {
+      expect(session).toHaveProperty("model", model);
+    }
     const projected = JSON.stringify(events);
     expect(projected).toContain("Realtime provider error.");
-    for (const privateValue of [model, ...sensitiveDetails]) {
+    for (const privateValue of [...(hideModel ? [model] : []), ...sensitiveDetails]) {
       expect(projected).not.toContain(privateValue);
     }
   });

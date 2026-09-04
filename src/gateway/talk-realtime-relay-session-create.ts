@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { resolveExpiresAtMsFromDurationMs } from "@openclaw/normalization-core/number-coercion";
-import { formatErrorMessage } from "../infra/errors.js";
 import { REALTIME_VOICE_AGENT_CONSULT_TOOL_NAME } from "../talk/agent-consult-tool.js";
 import { buildRealtimeVoiceAgentCancelProviderResult } from "../talk/agent-run-control-shared.js";
 import { projectInternalRealtimeVoicePublicConfig } from "../talk/provider-internal.js";
@@ -539,11 +538,7 @@ export function createTalkRealtimeRelaySession(
         return;
       }
       const issue = realtimeRelayIssue({
-        message: projectRelayProviderErrorMessage(
-          formatErrorMessage(error),
-          params.model,
-          publicModel,
-        ),
+        message: projectRelayProviderErrorMessage(),
         provider: params.provider.id,
         model: publicModel,
         phase: ready ? "stream" : "connect",
@@ -586,23 +581,13 @@ export function createTalkRealtimeRelaySession(
     harness.close();
     try {
       bridge.close();
-    } catch (error) {
+    } catch {
       params.context.logGateway.warn(
-        `failed to close realtime relay bridge after provider terminated during creation: ${projectRelayProviderErrorMessage(
-          formatErrorMessage(error),
-          params.model,
-          publicModel,
-        )}`,
+        `failed to close realtime relay bridge after provider terminated during creation: ${projectRelayProviderErrorMessage()}`,
       );
     }
     if (earlyTerminal.kind === "error") {
-      throw new Error(
-        projectRelayProviderErrorMessage(
-          formatErrorMessage(earlyTerminal.error),
-          params.model,
-          publicModel,
-        ),
-      );
+      throw new Error(projectRelayProviderErrorMessage());
     }
     throw new Error(`Realtime provider closed during session creation: ${earlyTerminal.reason}`);
   }
@@ -669,17 +654,13 @@ export function createTalkRealtimeRelaySession(
   registerTalkConnectionCleanup(params.connId, "realtime-relay", () => {
     closeTalkRealtimeRelaySessionsForConnection(params.connId);
   });
-  bridge.connect().catch((error: unknown) => {
+  bridge.connect().catch(() => {
     const active = relaySessions.get(relaySessionId);
     if (active !== relay) {
       return;
     }
     const issue = realtimeRelayIssue({
-      message: projectRelayProviderErrorMessage(
-        formatErrorMessage(error),
-        params.model,
-        publicModel,
-      ),
+      message: projectRelayProviderErrorMessage(),
       provider: params.provider.id,
       model: publicModel,
       phase: "connect",

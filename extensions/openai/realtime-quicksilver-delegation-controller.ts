@@ -55,12 +55,26 @@ function shortFailureReason(error: unknown): string {
   return formatErrorMessage(error).replaceAll(/\s+/g, " ").trim().slice(0, 180) || "unknown error";
 }
 
-function readWireEventType(payload: string): string | undefined {
-  try {
-    const decoded = JSON.parse(payload) as Record<string, unknown>;
-    return typeof decoded.type === "string" ? decoded.type : undefined;
-  } catch {
-    return undefined;
+function projectWireEventType(event: OpenAIQuicksilverInboundEvent): string | undefined {
+  switch (event.kind) {
+    case "session-started":
+      return "session.started";
+    case "audio-cleared":
+      return "output_audio_buffer.cleared";
+    case "audio":
+      return "output_audio.delta";
+    case "transcript-delta":
+      return event.role === "user" ? "input_transcript.added" : "output_transcript.added";
+    case "transcript-done":
+      return "turn.done";
+    case "delegation":
+      return "delegation.created";
+    case "error":
+      return "error";
+    case "ignored":
+      return event.eventType === "session.updated" ? "session.updated" : undefined;
+    case "unknown":
+      return undefined;
   }
 }
 
@@ -93,20 +107,18 @@ export class OpenAIQuicksilverDelegationController {
       return;
     }
     const payload = rawDataToString(data);
-    if (this.options.onWireEventType) {
-      const eventType = readWireEventType(payload);
-      if (eventType) {
-        this.options.onWireEventType(eventType);
-      }
-    }
     const event = parseOpenAIQuicksilverEvent(payload);
     if (event) {
+      const eventType = projectWireEventType(event);
+      if (eventType) {
+        this.options.onWireEventType?.(eventType);
+      }
       this.handleEvent(event);
     }
   }
 
   handleEvent(event: OpenAIQuicksilverInboundEvent): void {
-    if (this.stopped || event.kind === "ignored") {
+    if (this.stopped || event.kind === "ignored" || event.kind === "audio-cleared") {
       return;
     }
     if (event.kind === "unknown") {

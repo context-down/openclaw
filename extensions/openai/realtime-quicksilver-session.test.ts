@@ -221,12 +221,13 @@ describe("GPT-Live offer broker", () => {
   });
 
   it.each([
-    ["error", "sideband unavailable"],
-    ["timeout", "OpenAI realtime connection timeout"],
-  ])("hangs up a GA call when sideband startup ends in %s", async (failure, message) => {
+    ["error", "sensitive-route"],
+    ["timeout", "sensitive-session"],
+  ])("hangs up a GA call when sideband startup ends in %s", async (failure, privateValue) => {
+    const onError = vi.fn();
     const bridge = {
       connect: vi.fn(async () => {
-        throw new Error(message);
+        throw new Error(privateValue);
       }),
       close: vi.fn(),
       sendAudio: vi.fn(),
@@ -250,7 +251,7 @@ describe("GPT-Live offer broker", () => {
         {
           providerConfig: {},
           model: "gpt-realtime-2.1",
-          gatewayControl: { bindBridge: vi.fn() },
+          gatewayControl: { bindBridge: vi.fn(), onError },
           gaSession: { type: "realtime", model: "gpt-realtime-2.1" },
           clientControl: { owner: "gateway" },
           gaSideband: {
@@ -268,7 +269,11 @@ describe("GPT-Live offer broker", () => {
         response.res,
       );
       expect(response.res.statusCode).toBe(502);
-      expect(response.readBody()).toContain(message);
+      expect(response.readBody()).toContain("OpenAI GPT-Live transport failed");
+      expect(response.readBody()).not.toContain(privateValue);
+      const callbackMessage = (onError.mock.calls[0]?.[0] as Error | undefined)?.message;
+      expect(callbackMessage).toBe("OpenAI GPT-Live transport failed");
+      expect(callbackMessage).not.toContain(privateValue);
       expect(bridge.close).toHaveBeenCalledOnce();
       expect(
         fetchMock.mock.calls.filter(([url]) =>
@@ -587,7 +592,7 @@ describe("GPT-Live offer broker", () => {
             socket.readyState = 1;
             socket.emit("open");
             if (terminalEvent === "error") {
-              socket.emit("error", new Error("post-open failure"));
+              socket.emit("error", new Error("sensitive-route sensitive-session"));
             } else {
               socket.readyState = 3;
               socket.emit("close");
@@ -613,14 +618,19 @@ describe("GPT-Live offer broker", () => {
         await realtime.handler(createRequest({ token: reservation.clientSecret }), response.res);
 
         expect(response.res.statusCode).toBe(502);
-        expect(response.readBody()).toContain("sideband failed during startup");
+        expect(response.readBody()).toContain("OpenAI GPT-Live transport failed");
         expect(sockets).toHaveLength(1);
         expect(onError).toHaveBeenCalledOnce();
         expect(onClose).toHaveBeenCalledExactlyOnceWith("error");
         if (terminalEvent === "error") {
-          expect(logger.warn).toHaveBeenCalledWith(
-            "OpenAI GPT-Live sideband socket failed: post-open failure",
-          );
+          expect(logger.warn).toHaveBeenCalledWith("OpenAI GPT-Live transport failed");
+        }
+        const callbackMessage = (onError.mock.calls[0]?.[0] as Error | undefined)?.message;
+        expect(callbackMessage).toBe("OpenAI GPT-Live transport failed");
+        for (const privateValue of ["sensitive-route", "sensitive-session"]) {
+          expect(response.readBody()).not.toContain(privateValue);
+          expect(logger.warn.mock.calls.flat().join("\n")).not.toContain(privateValue);
+          expect(callbackMessage).not.toContain(privateValue);
         }
       } finally {
         await realtime.cleanup();
@@ -1028,7 +1038,7 @@ describe("GPT-Live offer broker", () => {
       await expect(handling).resolves.toBe(true);
       expect(upstreamSignal?.aborted).toBe(true);
       expect(response.res.statusCode).toBe(502);
-      expect(response.readBody()).toContain("OpenAI realtime session canceled");
+      expect(response.readBody()).toContain("OpenAI GPT-Live transport failed");
       expect(response.end).toHaveBeenCalledOnce();
       expect(sockets).toEqual([]);
     } finally {

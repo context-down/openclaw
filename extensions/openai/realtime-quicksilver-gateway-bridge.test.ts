@@ -687,7 +687,7 @@ describe("GPT-Live gateway relay bridge", () => {
     expect(onClose).toHaveBeenCalledWith("completed");
     resolvePeer();
 
-    await expect(connection).rejects.toThrow("GPT-Live gateway relay bridge closed");
+    await expect(connection).rejects.toThrow("OpenAI GPT-Live gateway relay failed");
     await vi.waitFor(() => expect(peer.close).toHaveBeenCalledOnce());
     expect(peer.sendAudio).not.toHaveBeenCalled();
     bridge.sendAudio(Buffer.from([0x43, 0x44]));
@@ -703,7 +703,7 @@ describe("GPT-Live gateway relay bridge", () => {
     bridge.sendAudio(Buffer.from([0x41, 0x42]));
     rejectPeer(new Error("media peer unavailable"));
 
-    await expect(connection).rejects.toThrow("media peer unavailable");
+    await expect(connection).rejects.toThrow("OpenAI GPT-Live gateway relay failed");
     expect(pendingAudioState.pendingAudio).toHaveLength(0);
     bridge.sendAudio(Buffer.from([0x43, 0x44]));
     expect(pendingAudioState.pendingAudio).toHaveLength(0);
@@ -720,7 +720,7 @@ describe("GPT-Live gateway relay bridge", () => {
     bridgeRef.current = harness.bridge;
     await harness.waitForPeerStart();
     const connectionRejected = expect(harness.connection).rejects.toThrow(
-      "GPT-Live gateway relay bridge closed",
+      "OpenAI GPT-Live gateway relay failed",
     );
 
     harness.triggerPeerError(new Error("media peer failed"));
@@ -743,7 +743,7 @@ describe("GPT-Live gateway relay bridge", () => {
     await harness.waitForPeerStart();
     harness.bridge.sendAudio(Buffer.from([0x41, 0x42]));
     const connectionRejected = expect(harness.connection).rejects.toThrow(
-      "GPT-Live gateway relay bridge closed",
+      "OpenAI GPT-Live gateway relay failed",
     );
 
     expect(() => harness.triggerPeerError(new Error("media peer failed"))).toThrow(callbackError);
@@ -937,7 +937,7 @@ describe("GPT-Live gateway relay bridge", () => {
       },
     ]);
 
-    emitSideband(connectedSocket, { type: "output_audio.delta", delta: "ignored-media-copy" });
+    emitSideband(connectedSocket, { type: "output_audio.delta", audio: "ignored-media-copy" });
     expect(onEvent).toHaveBeenCalledWith({ direction: "server", type: "output_audio.delta" });
     expect(onAudio).not.toHaveBeenCalled();
 
