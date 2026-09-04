@@ -34,6 +34,8 @@ scenario:
     - src/shared/transcript-only-openclaw-assistant.ts
   execution:
     kind: flow
+    # No automatic retry: a duplicate marker is the exact bug this scenario guards.
+    retryCount: 0
     channel: qa-channel
     summary: Run a real QA Gateway/qa-channel A2A source-reply turn and assert the message-tool delivery mirror is not announced again.
     config:
@@ -119,13 +121,18 @@ flow:
         - set: matchingOutbound
           value:
             expr: "snapshot.messages.slice(startIndex).filter((message) => message.direction === 'outbound' && message.conversation.id === config.conversationId && message.conversation.kind === 'group' && String(message.text ?? '').includes(config.expectedMarker))"
-        - assert:
-            expr: matchingOutbound.length === 1
-            message:
-              expr: "`expected exactly one requester-visible A2A marker after duplicate window, saw ${matchingOutbound.length}; transcript=${formatTransportTranscript(state, { conversationId: config.conversationId })}`"
         - set: scenarioRequests
           value:
             expr: "env.mock ? (await fetchJson(`${env.mock.baseUrl}/debug/requests?after=${requestCursorBefore}`)).map((request) => ({ prompt: String(request.prompt ?? '').slice(0, 220), plannedToolName: request.plannedToolName ?? null, plannedToolArgs: request.plannedToolArgs ?? null, toolOutput: request.toolOutput ? String(request.toolOutput).slice(0, 220) : null })) : []"
+        # On a duplicate, attribute each delivery: message ids, timing, reply linkage, and the
+        # projected history rows tell apart a message-tool mirror from an announce re-delivery.
+        - set: duplicateAttribution
+          value:
+            expr: "matchingOutbound.length === 1 ? null : { outbound: matchingOutbound.map((message) => ({ id: message.id, timestamp: message.timestamp ?? null, replyToId: message.replyToId ?? null, senderId: message.senderId, isError: message.isError === true })), history: ((await env.gateway.call('chat.history', { sessionKey: targetSessionKey, limit: 20 }, { timeoutMs: 30000 })).messages ?? []).map((message) => ({ role: message.role, seq: message.__openclaw?.seq ?? null, messageToolMirror: message.openclawMessageToolMirror !== undefined, deliveryMirror: message.openclawDeliveryMirror !== undefined, text: typeof message.content === 'string' ? message.content.slice(0, 80) : Array.isArray(message.content) ? message.content.map((part) => part?.text ?? '').join(' ').slice(0, 80) : '' })), requests: scenarioRequests }"
+        - assert:
+            expr: matchingOutbound.length === 1
+            message:
+              expr: "`expected exactly one requester-visible A2A marker after duplicate window, saw ${matchingOutbound.length}; attribution=${JSON.stringify(duplicateAttribution)}; transcript=${formatTransportTranscript(state, { conversationId: config.conversationId })}`"
         - assert:
             expr: "!env.mock || scenarioRequests.filter((request) => request.plannedToolName === 'sessions_send' && request.plannedToolArgs?.sessionKey === targetSessionKey && request.plannedToolArgs?.timeoutSeconds === 0).length === 1"
             message:
