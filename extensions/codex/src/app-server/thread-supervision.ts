@@ -67,6 +67,7 @@ type PendingSupervisionMaterializationParams = {
   appServer: CodexAppServerRuntimeOptions;
   developerInstructions?: string;
   config?: JsonObject;
+  managedHooksConfig?: JsonObject;
   shellEnvironment?: Readonly<Record<string, string>>;
   disableLoginShell?: boolean;
   nativeCodeModeEnabled?: boolean;
@@ -236,6 +237,7 @@ export async function materializePendingSupervisionBranch(
       appServer: params.appServer,
       developerInstructions: params.developerInstructions,
       config: params.config,
+      managedHooksConfig: params.managedHooksConfig,
       nativeCodeModeEnabled: params.nativeCodeModeEnabled,
       nativeProviderWebSearchSupport: params.nativeProviderWebSearchSupport,
       nativeCodeModeOnlyEnabled: params.nativeCodeModeOnlyEnabled,
@@ -471,6 +473,7 @@ function buildPendingSupervisionProbeForkParams(
   pending: CodexAppServerPendingSupervisionBranch,
 ): CodexThreadForkParams {
   const runtimeConfig = buildCodexRuntimeThreadConfigForRun(params.attempt, params.config, {
+    managedHooksConfig: params.managedHooksConfig,
     nativeCodeModeEnabled: params.nativeCodeModeEnabled,
     nativeProviderWebSearchSupport: params.nativeProviderWebSearchSupport,
     nativeCodeModeOnlyEnabled: params.nativeCodeModeOnlyEnabled,

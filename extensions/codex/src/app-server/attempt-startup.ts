@@ -72,6 +72,7 @@ import {
   releaseCodexSandboxExecServerEnvironment,
   type CodexSandboxExecEnvironment,
 } from "./sandbox-exec-server.js";
+import { prepareCodexSandboxNativeContext } from "./sandbox-native-context.js";
 import { buildScheduledCodexAppAuthorityInputFingerprint } from "./scheduled-app-authority.js";
 import type { CodexAppServerBindingStore } from "./session-binding.js";
 import {
@@ -184,7 +185,9 @@ export async function startCodexAttemptThread(params: {
   onExecutionDisconnect?: (error: Error) => void;
   spawnedBy: EmbeddedRunAttemptParams["spawnedBy"];
 }): Promise<StartCodexAttemptThreadResult> {
-  let pluginAppServer = params.appServer;
+  const nativeContext = await prepareCodexSandboxNativeContext(params);
+  const appServer = nativeContext?.appServer ?? params.appServer;
+  let pluginAppServer = appServer;
   const startupRuntimeAuthProfileId =
     params.startupPreparedAuth?.kind === "profile"
       ? params.startupPreparedAuth.profileId
@@ -241,10 +244,10 @@ export async function startCodexAttemptThread(params: {
             ));
         pluginAppServer = mcpElicitationDelegationRequired
           ? {
-              ...params.appServer,
-              approvalPolicy: withMcpElicitationsApprovalPolicy(params.appServer.approvalPolicy),
+              ...appServer,
+              approvalPolicy: withMcpElicitationsApprovalPolicy(appServer.approvalPolicy),
             }
-          : params.appServer;
+          : appServer;
 
         let attemptedClient: CodexAppServerClient | undefined;
         const startupAttempt = async () => {
@@ -255,7 +258,7 @@ export async function startCodexAttemptThread(params: {
           try {
             const attemptParams = params.buildAttemptParams();
             startupClient = await params.attemptClientFactory({
-              startOptions: params.appServer.start,
+              startOptions: appServer.start,
               pluginConfig: params.pluginConfig,
               ...(params.startupPreparedAuth
                 ? { preparedAuth: params.startupPreparedAuth }
@@ -283,7 +286,7 @@ export async function startCodexAttemptThread(params: {
                 }
               },
               abandonSignal: startupAbandonController.signal,
-              timeoutMs: params.appServer.requestTimeoutMs,
+              timeoutMs: appServer.requestTimeoutMs,
             });
             const activeStartupClient = startupClient;
             let startupClientLeaseReleased = false;
@@ -327,7 +330,7 @@ export async function startCodexAttemptThread(params: {
                 pluginConfig: params.pluginConfig,
                 config: params.config,
                 agentDir: params.agentDir,
-                timeoutMs: params.appServer.requestTimeoutMs,
+                timeoutMs: appServer.requestTimeoutMs,
                 signal: startupAbandonController.signal,
               });
             } catch (error) {
@@ -344,7 +347,7 @@ export async function startCodexAttemptThread(params: {
             }
             const startupRuntimeIdentity = activeStartupClient.getRuntimeIdentity();
             const pluginAppCacheKey = buildCodexPluginAppCacheKey({
-              appServer: params.appServer,
+              appServer,
               agentDir: params.agentDir,
               authProfileId: startupRuntimeAuthProfileId,
               accountId: params.startupAuthAccountCacheKey,
@@ -355,9 +358,10 @@ export async function startCodexAttemptThread(params: {
                 readCodexAppServerClientDesktopGenerationFingerprint(activeStartupClient),
             });
             const appServerRuntimeFingerprint = buildCodexAppServerRuntimeFingerprint({
-              appServer: params.appServer,
+              appServer,
               appServerVersion: activeStartupClient.getServerVersion(),
               runtimeIdentity: startupRuntimeIdentity,
+              protectedNativeContext: nativeContext,
             });
             const basePluginThreadConfigInputFingerprint = pluginThreadConfigRequired
               ? buildCodexPluginThreadConfigInputFingerprint({
@@ -381,7 +385,7 @@ export async function startCodexAttemptThread(params: {
                 enabledPluginConfigKeys,
                 pluginAppCacheKey,
                 startupAuthProfileId: startupRuntimeAuthProfileId,
-                appServer: params.appServer,
+                appServer,
               }),
             );
             let startupSandboxEnvironment: CodexSandboxExecEnvironment | undefined;
@@ -407,8 +411,8 @@ export async function startCodexAttemptThread(params: {
                     client: activeStartupClient,
                     sandbox: params.sandbox ?? null,
                     runtime: params.runtime,
-                    appServerStartOptions: params.appServer.start,
-                    timeoutMs: params.appServer.requestTimeoutMs,
+                    appServerStartOptions: appServer.start,
+                    timeoutMs: appServer.requestTimeoutMs,
                     signal: AbortSignal.any([params.signal, startupAbandonController.signal]),
                     onExecutionDisconnect: params.onExecutionDisconnect,
                   })
@@ -431,16 +435,20 @@ export async function startCodexAttemptThread(params: {
               startupSandboxEnvironment,
               params.nativeToolSurfaceEnabled,
             );
-            const startupExecutionCwd = resolveCodexAppServerExecutionCwd({
-              effectiveCwd: params.effectiveCwd,
-              localWorkspaceRoot: params.effectiveWorkspace,
-              environment: startupSandboxEnvironment,
-              nativeToolSurfaceEnabled: params.nativeToolSurfaceEnabled,
-              remoteWorkspaceRoot: params.appServer.remoteWorkspaceRoot,
-            });
-            const startupSandboxPolicy = startupSandboxEnvironment
-              ? resolveCodexExternalSandboxPolicyForOpenClawSandbox(params.sandbox)
-              : undefined;
+            const startupExecutionCwd =
+              nativeContext?.cwd ??
+              resolveCodexAppServerExecutionCwd({
+                effectiveCwd: params.effectiveCwd,
+                localWorkspaceRoot: params.effectiveWorkspace,
+                environment: startupSandboxEnvironment,
+                nativeToolSurfaceEnabled: params.nativeToolSurfaceEnabled,
+                remoteWorkspaceRoot: appServer.remoteWorkspaceRoot,
+              });
+            const startupSandboxPolicy =
+              nativeContext?.sandboxPolicy ??
+              (startupSandboxEnvironment
+                ? resolveCodexExternalSandboxPolicyForOpenClawSandbox(params.sandbox)
+                : undefined);
             let startupReservation: CodexThreadRouteReservation | undefined;
             const releaseStartupReservation = () => {
               startupReservation?.release();
@@ -493,7 +501,7 @@ export async function startCodexAttemptThread(params: {
                 nativeHookRelayRequired: params.nativeHookRelayRequired,
                 nativeCodeModeEnabled: params.nativeToolSurfaceEnabled,
                 nativeProviderWebSearchSupport: params.nativeProviderWebSearchSupport,
-                nativeCodeModeOnlyEnabled: params.appServer.codeModeOnly,
+                nativeCodeModeOnlyEnabled: appServer.codeModeOnly,
                 userMcpServersEnabled: params.configuredMcpDynamicSurface
                   ? false
                   : params.nativeToolSurfaceEnabled,
@@ -505,6 +513,7 @@ export async function startCodexAttemptThread(params: {
                 configuredMcpOwnershipVersion: params.configuredMcpOwnershipVersion,
                 environmentSelection: startupEnvironmentSelection,
                 appServerRuntimeFingerprint,
+                requireProtectedNativeContext: Boolean(nativeContext),
                 contextEngineProjection: params.contextEngineProjection,
                 signal,
                 pluginThreadConfig: pluginThreadConfigRequired
@@ -512,7 +521,7 @@ export async function startCodexAttemptThread(params: {
                       inputFingerprint: pluginThreadConfigInputFingerprint,
                       enabledPluginConfigKeys,
                       policy: resolvedPluginPolicy,
-                      requestTimeoutMs: params.appServer.requestTimeoutMs,
+                      requestTimeoutMs: appServer.requestTimeoutMs,
                       signal,
                       pluginConfig: pluginThreadConfigPluginConfig,
                       client: activeStartupClient,

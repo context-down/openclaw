@@ -270,6 +270,7 @@ export async function tryReuseCodexLiveThread(
       buildThreadResumeParams(params.params, {
         threadId: binding.threadId,
         cwd: params.cwd,
+        requireProtectedNativeContext: params.requireProtectedNativeContext,
         authProfileId: resumeAuthProfileId,
         model: startModelSelection.model,
         modelProvider: startModelProvider,
@@ -284,6 +285,7 @@ export async function tryReuseCodexLiveThread(
         webSearchAllowed: params.webSearchAllowed,
         hostSystemAgentActive,
         restrictedToolSurfaceInheritedMcpServerNames,
+        managedHooksConfig: options.managedHooksConfig,
         shellEnvironment: params.shellEnvironment,
         disableLoginShell: params.disableLoginShell,
       }),
