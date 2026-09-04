@@ -109,7 +109,7 @@ const optionValue = (name) => {
 };
 async function main() {
   if (process.env.OPENCLAW_FAKE_CRABBOX_INVOCATION_LOG) fs.appendFileSync(process.env.OPENCLAW_FAKE_CRABBOX_INVOCATION_LOG, JSON.stringify(args) + "\n");
-  if (args[0] === "--version") { console.log(process.env.OPENCLAW_FAKE_CRABBOX_VERSION || "crabbox 0.22.1"); return; }
+  if (args[0] === "--version") { console.log(process.env.OPENCLAW_FAKE_CRABBOX_VERSION || "crabbox 0.48.1"); return; }
   if (args[0] === "run" && args[1] === "--help") { process.stdout.write(helpText); return; }
   if (args[0] === "warmup" && args[1] === "--help") { process.stdout.write(${JSON.stringify(`${helpText}${fakeWarmupValueOptionHelp}`)}); return; }
   if (args[0] === "actions" && args[1] === "hydrate" && args[2] === "--help") { process.stdout.write(${JSON.stringify(`${helpText}${fakeHydrateValueOptionHelp}`)}); return; }
@@ -198,7 +198,7 @@ main().catch((error) => { process.stderr.write(String(error?.stack || error) + "
       crabboxPath,
       [
         'if [ "$#" -eq 1 ] && [ "$1" = "--version" ]; then',
-        `  printf '%s\\n' "\${OPENCLAW_FAKE_CRABBOX_VERSION:-crabbox 0.22.1}"`,
+        `  printf '%s\\n' "\${OPENCLAW_FAKE_CRABBOX_VERSION:-crabbox 0.48.1}"`,
         "  exit 0",
         "fi",
         'if [ "$#" -eq 2 ] && [ "$1" = "run" ] && [ "$2" = "--help" ]; then',
@@ -251,7 +251,7 @@ function makeSlowCrabbox(helpText: string, mode: "help" | "version", delayMs: nu
 const args = process.argv.slice(2); const mode = ${JSON.stringify(mode)};
 if (args[0] === "--version") {
   if (mode === "version") setTimeout(() => process.exit(0), ${delayMs});
-  else console.log(process.env.OPENCLAW_FAKE_CRABBOX_VERSION || "crabbox 0.22.1");
+  else console.log(process.env.OPENCLAW_FAKE_CRABBOX_VERSION || "crabbox 0.48.1");
 } else if (args[0] === "run" && args[1] === "--help") {
   if (mode === "help") setTimeout(() => { process.stderr.write(${JSON.stringify(runHelpText)}); process.exit(0); }, ${delayMs});
   else process.stdout.write(${JSON.stringify(runHelpText)});
@@ -1279,16 +1279,16 @@ describe("scripts/crabbox-wrapper", () => {
     expect(output.args).toContain("azure");
   });
 
-  it("falls through Blacksmith when the Crabbox binary is too old", () => {
+  it("falls through Blacksmith when the Crabbox binary predates ownership fencing", () => {
     const { output, result } = runSuccessfulBrokerWrapper(
       ["run", "--workload", "ci-fast", "--", "echo ok"],
       {
-        env: { OPENCLAW_FAKE_CRABBOX_VERSION: "crabbox 0.21.9" },
+        env: { OPENCLAW_FAKE_CRABBOX_VERSION: "crabbox 0.47.9" },
       },
     );
-    expect(output.args).toContain("azure");
+    expect(output.args).toContain("daytona");
     expect(result.stderr).toContain(
-      "blacksmith-testbox:requires Crabbox >= 0.22.0 for Blacksmith Testbox",
+      "blacksmith-testbox:requires Crabbox >= 0.48.0 for Blacksmith Testbox",
     );
   });
 
@@ -1327,7 +1327,7 @@ describe("scripts/crabbox-wrapper", () => {
     });
 
     expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toBe("crabbox 0.22.1");
+    expect(result.stdout.trim()).toBe("crabbox 0.48.1");
     expect(result.stderr).not.toContain("route workload=");
   });
 
@@ -1335,7 +1335,7 @@ describe("scripts/crabbox-wrapper", () => {
     const result = runDefaultWrapper(["--version", "--workload", "surprise"]);
 
     expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toBe("crabbox 0.22.1");
+    expect(result.stdout.trim()).toBe("crabbox 0.48.1");
     expect(result.stderr).not.toContain("unsupported Crabbox workload");
   });
 
@@ -1501,6 +1501,7 @@ describe("scripts/crabbox-wrapper", () => {
       ["run", "--provider", "blacksmith-testbox", "--", "echo ok"],
       {
         configJson: directBrokerConfig("blacksmith-testbox"),
+        env: { OPENCLAW_FAKE_CRABBOX_VERSION: "crabbox 0.48.0" },
       },
     );
     expect(output.args).toContain("blacksmith-testbox");
@@ -1538,6 +1539,7 @@ describe("scripts/crabbox-wrapper", () => {
   it("fails closed when no policy provider is ready", () => {
     const result = runBrokerWrapper(["run", "--workload", "ci-fast", "--", "echo ok"], {
       env: {
+        OPENCLAW_FAKE_CRABBOX_VERSION: "crabbox 0.48.0",
         OPENCLAW_FAKE_CRABBOX_UNREADY_PROVIDERS: "blacksmith-testbox,daytona,azure,aws",
       },
     });
@@ -1637,33 +1639,31 @@ describe("scripts/crabbox-wrapper", () => {
     },
   );
 
-  it("requires a current Crabbox binary for Blacksmith Testbox runs", () => {
-    const result = runDefaultWrapper(["run", "--provider", "blacksmith-testbox", "--", "echo ok"], {
-      env: { OPENCLAW_FAKE_CRABBOX_VERSION: "crabbox 0.21.9" },
+  it.each([
+    {
+      provider: "blacksmith-testbox",
+      version: "crabbox 0.47.9",
+      name: "the prior release",
+    },
+    {
+      provider: "blacksmith",
+      version: "crabbox 0.47.9",
+      name: "the provider alias",
+    },
+    {
+      provider: "blacksmith-testbox",
+      version: "crabbox 0.48.0-rc.1",
+      name: "a prerelease at the boundary",
+    },
+  ])("rejects $name below the Blacksmith ownership floor", ({ provider, version }) => {
+    const result = runDefaultWrapper(["run", "--provider", provider, "--", "echo ok"], {
+      env: { OPENCLAW_FAKE_CRABBOX_VERSION: version },
     });
 
     expect(result.status).toBe(2);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("provider=blacksmith-testbox requires Crabbox >= 0.22.0");
-    expect(result.stderr).toContain("selected binary reported version=crabbox 0.21.9");
-  });
-
-  it("applies the Blacksmith version gate to provider aliases", () => {
-    const result = runDefaultWrapper(["run", "--provider", "blacksmith", "--", "echo ok"], {
-      env: { OPENCLAW_FAKE_CRABBOX_VERSION: "crabbox 0.21.9" },
-    });
-
-    expect(result.status).toBe(2);
-    expect(result.stderr).toContain("provider=blacksmith-testbox requires Crabbox >= 0.22.0");
-  });
-
-  it("rejects prerelease Crabbox builds at the Blacksmith minimum boundary", () => {
-    const result = runDefaultWrapper(["run", "--provider", "blacksmith-testbox", "--", "echo ok"], {
-      env: { OPENCLAW_FAKE_CRABBOX_VERSION: "crabbox 0.22.0-rc.1" },
-    });
-
-    expect(result.status).toBe(2);
-    expect(result.stderr).toContain("selected binary reported version=crabbox 0.22.0-rc.1");
+    expect(result.stderr).toContain("provider=blacksmith-testbox requires Crabbox >= 0.48.0");
+    expect(result.stderr).toContain(`selected binary reported version=${version}`);
   });
 
   it("rejects unsafe Crabbox version numbers at the Blacksmith minimum gate", () => {
@@ -1677,14 +1677,20 @@ describe("scripts/crabbox-wrapper", () => {
     );
   });
 
-  it("accepts post-release Crabbox describe builds at the Blacksmith minimum boundary", () => {
-    const result = runDefaultWrapper(["run", "--provider", "blacksmith-testbox", "--", "echo ok"], {
-      env: { OPENCLAW_FAKE_CRABBOX_VERSION: "crabbox 0.22.0-3-gabc1234" },
-    });
+  it.each(["crabbox 0.48.0", "crabbox 0.48.0-3-gabc1234"])(
+    "accepts Blacksmith ownership-capable build %s",
+    (version) => {
+      const result = runDefaultWrapper(
+        ["run", "--provider", "blacksmith-testbox", "--", "echo ok"],
+        {
+          env: { OPENCLAW_FAKE_CRABBOX_VERSION: version },
+        },
+      );
 
-    expect(result.status).toBe(0);
-    expect(parseFakeCrabboxOutput(result).args).toContain("blacksmith-testbox");
-  });
+      expect(result.status).toBe(0);
+      expect(parseFakeCrabboxOutput(result).args).toContain("blacksmith-testbox");
+    },
+  );
 
   it("tells operators how to read delegated Testbox proof status", () => {
     const result = runDefaultWrapper(["run", "--provider", "blacksmith-testbox", "--", "echo ok"]);

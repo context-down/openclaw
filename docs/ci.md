@@ -1519,6 +1519,11 @@ The repo wrapper validates the selected Crabbox binary and provider before runni
 node scripts/crabbox-wrapper.mjs run --provider blacksmith-testbox --timing-json --shell -- "pnpm test <path-or-filter>"
 ```
 
+Blacksmith Testbox proof requires Crabbox 0.48.0 or newer. That release binds
+stop and reuse to exact local claims, fences cleanup against ownership changes,
+and preserves failed cleanup state. It does not close Blacksmith's persistent
+SSH mux or make externally stopped hosting workflows finish successfully.
+
 When using the sibling checkout, rebuild the ignored local binary before timing or proof work:
 
 ```bash
