@@ -482,7 +482,11 @@ describe("OpenAIQuicksilverVoiceBridge", () => {
     error.name = `Socket${model}`;
     active.socket.emit("error", error);
 
-    expect(JSON.stringify(active.onError.mock.calls)).not.toContain(model);
+    expect(active.onError).toHaveBeenCalledOnce();
+    const activeError = active.onError.mock.calls[0]?.[0] as Error;
+    expect(activeError).toBeInstanceOf(Error);
+    expect(activeError.message).not.toContain(model);
+    expect(activeError.name).not.toContain(model);
   });
 
   it("captures only fixed metadata for private transport activity", async () => {
