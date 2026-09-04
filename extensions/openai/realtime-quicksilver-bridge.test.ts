@@ -143,7 +143,7 @@ describe("OpenAIQuicksilverVoiceBridge", () => {
       type: "session.update",
       session: {
         instructions: "Use delegation for real work.",
-        audio: { output: { voice: "spruce" } },
+        audio: { output: { voice: "marin" } },
         delegation: { type: "client" },
       },
     });

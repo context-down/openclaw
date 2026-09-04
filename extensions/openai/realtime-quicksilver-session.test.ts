@@ -36,7 +36,7 @@ describe("GPT-Live session shaping", () => {
       buildOpenAIQuicksilverSession({
         model: "gpt-live-1",
         instructions: " Speak briefly. ",
-        voice: "SPRUCE",
+        voice: "CEDAR",
         initialItems: [
           { role: "user", text: "Question" },
           { role: "assistant", text: "Answer" },
@@ -45,7 +45,7 @@ describe("GPT-Live session shaping", () => {
     ).toEqual({
       model: "gpt-live-1",
       instructions: "Speak briefly.",
-      audio: { output: { voice: "spruce" } },
+      audio: { output: { voice: "cedar" } },
       delegation: { type: "client" },
       initial_items: [
         {
@@ -69,36 +69,38 @@ describe("GPT-Live session shaping", () => {
     ).toEqual({
       model: "gpt-live-1-mini",
       instructions: "",
-      audio: { output: { voice: "cove" } },
+      audio: { output: { voice: "marin" } },
       delegation: { type: "client" },
     });
   });
 
-  it.each(["arbor", "breeze", "cove", "ember", "juniper", "maple", "sol", "spruce", "vale"])(
-    "accepts the Codex V3 %s voice",
-    (voice) => {
-      expect(buildOpenAIQuicksilverSession({ model: "gpt-live-test-canary", voice }).audio).toEqual(
-        {
-          output: { voice },
-        },
-      );
-    },
-  );
+  it.each(["marin", "cedar"])("accepts the current realtime V3 %s voice", (voice) => {
+    expect(buildOpenAIQuicksilverSession({ model: "gpt-live-test-canary", voice }).audio).toEqual({
+      output: { voice },
+    });
+  });
 
   it.each([
     "alloy",
+    "arbor",
     "ash",
     "ballad",
-    "cedar",
+    "breeze",
     "coral",
+    "cove",
     "echo",
-    "marin",
+    "ember",
+    "juniper",
+    "maple",
     "sage",
     "shimmer",
+    "sol",
+    "spruce",
+    "vale",
     "verse",
-  ])("defaults the GA-only %s voice to Cove for GPT-Live", (voice) => {
+  ])("defaults an unsupported %s voice to Marin for GPT-Live", (voice) => {
     expect(buildOpenAIQuicksilverSession({ model: "gpt-live-test-canary", voice }).audio).toEqual({
-      output: { voice: "cove" },
+      output: { voice: "marin" },
     });
   });
 
@@ -765,7 +767,7 @@ describe("GPT-Live offer broker", () => {
       expect(reservation).toMatchObject({
         offerUrl: OPENAI_QUICKSILVER_OFFER_PATH,
         model: "gpt-live-1",
-        voice: "cove",
+        voice: "marin",
         expiresAt: expect.any(Number),
       });
       if (reservation.transport !== "webrtc") {

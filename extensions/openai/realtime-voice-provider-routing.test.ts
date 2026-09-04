@@ -771,7 +771,7 @@ describe("OpenAI realtime voice provider routing", () => {
 
   it.each([
     { model: "gpt-realtime-2", voice: " Verse ", expectedVoice: "verse" },
-    { model: "gpt-live-test-canary", voice: " Spruce ", expectedVoice: "spruce" },
+    { model: "gpt-live-test-canary", voice: " Cedar ", expectedVoice: "cedar" },
   ])("normalizes provider-owned voice settings for $model", ({ model, voice, expectedVoice }) => {
     const provider = buildOpenAIRealtimeVoiceProvider();
     const resolved = provider.resolveConfig?.({

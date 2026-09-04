@@ -4,6 +4,7 @@ import {
   readErrorName,
   toErrorObject,
 } from "openclaw/plugin-sdk/error-runtime";
+import { canonicalizeBase64 } from "openclaw/plugin-sdk/media-runtime";
 import type { PluginLogger } from "openclaw/plugin-sdk/plugin-entry";
 import {
   buildRealtimeVoiceAgentControlSpeechMessage,
@@ -39,6 +40,7 @@ type OpenAIQuicksilverDelegationControllerOptions = {
   logger: Pick<PluginLogger, "debug" | "warn">;
   onError?: (error: Error) => void;
   onFatalError: (error: Error) => void;
+  onAudio?: (audio: Buffer) => void;
   onSessionStarted?: (expiresAt: number | undefined) => void;
   onTranscript?: (role: "user" | "assistant", text: string, done: boolean) => void;
   handleDelegationInput?: RealtimeVoiceGatewayControl["handleDelegationInput"];
@@ -128,8 +130,17 @@ export class OpenAIQuicksilverDelegationController {
       }
       return;
     }
-    // Both consumers negotiate audio over WebRTC; sideband audio would duplicate it.
     if (event.kind === "audio") {
+      if (!this.options.onAudio) {
+        // Browser and OAuth Gateway sessions negotiate audio over WebRTC.
+        return;
+      }
+      const audio = canonicalizeBase64(event.data);
+      if (!audio) {
+        this.fail(new Error("OpenAI GPT-Live returned malformed base64 audio"));
+        return;
+      }
+      this.options.onAudio(Buffer.from(audio, "base64"));
       return;
     }
     this.startDelegation(event.id, event.prompt);

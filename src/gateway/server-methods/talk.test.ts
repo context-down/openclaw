@@ -1294,6 +1294,45 @@ describe("talk.config handler", () => {
     });
   });
 
+  it("preserves unavailable non-OpenAI realtime models without a bundled projector", async () => {
+    const runtimeConfig = {
+      talk: {
+        realtime: {
+          provider: "other-realtime",
+          model: "other-live-model",
+          providers: {
+            "other-realtime": { model: "other-live-model", voice: "other-voice" },
+          },
+        },
+      },
+    } as OpenClawConfig;
+    mocks.readConfigFileSnapshot.mockResolvedValue({
+      path: "/tmp/openclaw.json",
+      hash: "test-hash",
+      valid: true,
+      config: runtimeConfig,
+    });
+    mocks.listRealtimeVoiceProviders.mockReturnValue([]);
+    const respond = vi.fn();
+
+    await callTalkHandler("talk.config", {
+      params: {},
+      client: { connect: { scopes: ["operator.read"] } },
+      respond,
+      context: { getRuntimeConfig: () => runtimeConfig },
+    });
+
+    const response = expectRespondOk(respond) as { config?: { talk?: Record<string, unknown> } };
+    const realtime = expectRecordFields(response.config?.talk?.realtime, {
+      provider: "other-realtime",
+      model: "other-live-model",
+    });
+    expectRecordFields((realtime.providers as Record<string, unknown>)["other-realtime"], {
+      model: "other-live-model",
+      voice: "other-voice",
+    });
+  });
+
   it("projects effective legacy realtime provider config for native routing", async () => {
     const resolveConfig = vi.fn(
       ({ rawConfig }: { rawConfig: Record<string, unknown> }): Record<string, unknown> => ({

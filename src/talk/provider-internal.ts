@@ -167,14 +167,7 @@ export function projectInternalRealtimeVoicePublicConfig<
   if (projected) {
     return projected as T; // SAFETY: projections only remove or replace `model`; other fields stay intact.
   }
-  if (params.provider) {
-    return params.config;
-  }
-  // A cold or policy-blocked owner cannot attest that its model id is public.
-  // Preserve the rest of the control-plane config, but fail closed on that field.
-  const { model: _model, ...publicConfig } = params.config;
-  // SAFETY: the fail-closed projection only removes `model`; every retained field preserves T.
-  return publicConfig as T;
+  return params.config;
 }
 
 export function resolveInternalRealtimeVoiceGatewayRelayLaunchError(params: {

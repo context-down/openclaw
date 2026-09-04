@@ -1,22 +1,11 @@
-// GPT-Live (OpenAI "quicksilver") uses browser or Gateway-owned WebRTC when
-// the host owns delegation, and the Platform-key Frameless Bidi WebSocket elsewhere.
+// GPT-Live uses browser or OAuth Gateway WebRTC, and Platform-key Frameless Bidi WebSocket.
 
 const OPENAI_GPT_LIVE_MODEL_PREFIX = "gpt-live";
 
-// Codex realtime V3 uses the V1 voice family for WebRTC and direct WebSocket sessions.
-export const OPENAI_GPT_LIVE_VOICES = [
-  "arbor",
-  "breeze",
-  "cove",
-  "ember",
-  "juniper",
-  "maple",
-  "sol",
-  "spruce",
-  "vale",
-] as const;
+// Realtime V3 currently accepts only this voice family across both transports.
+export const OPENAI_GPT_LIVE_VOICES = ["marin", "cedar"] as const;
 export type OpenAIGptLiveVoice = (typeof OPENAI_GPT_LIVE_VOICES)[number];
-export const OPENAI_GPT_LIVE_DEFAULT_VOICE: OpenAIGptLiveVoice = "cove";
+export const OPENAI_GPT_LIVE_DEFAULT_VOICE: OpenAIGptLiveVoice = "marin";
 
 export function resolveOpenAIQuicksilverVoice(value: unknown): OpenAIGptLiveVoice {
   if (typeof value === "string") {

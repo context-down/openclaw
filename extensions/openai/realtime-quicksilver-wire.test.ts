@@ -78,7 +78,7 @@ describe("GPT-Live session history", () => {
       type: "session.update",
       session: {
         instructions: "Speak briefly.",
-        audio: { output: { voice: "cove" } },
+        audio: { output: { voice: "marin" } },
         delegation: { type: "client" },
         initial_items: [
           { type: "message", role: "user", content: [{ type: "input_text", text: "Question" }] },
