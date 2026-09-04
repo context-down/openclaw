@@ -282,7 +282,6 @@ function getReloadPolicyCatalog() {
         "channels.defaults",
         "channels.modelByChannel",
         "messages.inbound",
-        "messages.ackReactionScope",
         "commands",
         "accessGroups",
         "tts",
