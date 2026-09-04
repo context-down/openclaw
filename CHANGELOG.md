@@ -35,7 +35,6 @@ Docs: https://docs.openclaw.ai
 
 ### Fixes
 
-- **Crabbox Testbox proof:** require Crabbox 0.48.0 or newer for ownership-bound reuse and cleanup evidence, without claiming to fix Blacksmith's persistent SSH mux or cancelled hosting runs.
 - **Update readiness:** select declared health-check owners before loading plugin APIs, preventing unrelated optional Doctor checks from interrupting upgrades while retaining mandatory readiness failures.
 
 - **Apple chat:** make queued messages immediately retryable after session-settings failures, while keeping retries bound to the exact failed attempt.
