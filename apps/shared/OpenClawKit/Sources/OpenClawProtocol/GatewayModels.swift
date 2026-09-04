@@ -22604,6 +22604,7 @@ public struct ChatHistoryParams: Codable, Sendable {
     public let agentid: String?
     public let cursor: String?
     public let limit: Int?
+    public let maxbytes: Int?
     public let offset: Int?
     public let pendingbefore: Int?
     public let inputrunids: [String]?
@@ -22616,6 +22617,7 @@ public struct ChatHistoryParams: Codable, Sendable {
         agentid: String? = nil,
         cursor: String? = nil,
         limit: Int? = nil,
+        maxbytes: Int? = nil,
         offset: Int? = nil,
         pendingbefore: Int? = nil,
         inputrunids: [String]? = nil,
@@ -22627,6 +22629,7 @@ public struct ChatHistoryParams: Codable, Sendable {
         self.agentid = agentid
         self.cursor = cursor
         self.limit = limit
+        self.maxbytes = maxbytes
         self.offset = offset
         self.pendingbefore = pendingbefore
         self.inputrunids = inputrunids
@@ -22640,6 +22643,7 @@ public struct ChatHistoryParams: Codable, Sendable {
         case agentid = "agentId"
         case cursor
         case limit
+        case maxbytes = "maxBytes"
         case offset
         case pendingbefore = "pendingBefore"
         case inputrunids = "inputRunIds"

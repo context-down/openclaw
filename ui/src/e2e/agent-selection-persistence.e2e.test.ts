@@ -100,7 +100,7 @@ async function hasOpenClawStartup(gateway: MockGatewayControls): Promise<boolean
     return (
       params?.agentId === "openclaw" &&
       params.sessionKey === "agent:openclaw:main" &&
-      params.limit === 800
+      params.limit === 80
     );
   });
 }

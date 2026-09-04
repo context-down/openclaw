@@ -42,6 +42,7 @@ import { PollController } from "../../lit/poll-controller.ts";
 import { SubscriptionsController } from "../../lit/subscriptions-controller.ts";
 import { ChatComposerCapabilityHost } from "./chat-composer-capability-host.ts";
 import { GitHubPublicationController } from "./chat-github-publication.ts";
+import { CHAT_PANE_LIFECYCLE_CHANGED_EVENT } from "./chat-history-events.ts";
 import { getChatHistoryLoadState } from "./chat-history-state.ts";
 import { sendSessionObserverVisibility } from "./chat-observer.ts";
 import type {
@@ -71,6 +72,7 @@ import type { SidebarLayout } from "./sidebar-layout-types.ts";
 import { closeSlot, isSidebarSlotVisible, openSlot, setSidebarOpen } from "./sidebar-layout.ts";
 
 export abstract class ChatPaneBase extends OpenClawLightDomElement {
+  private paneLifecycleRoot: Element | null = null;
   // The first Lit update must render even while hidden; later hidden work parks.
   // Disconnect releases the waiter so reconnect can schedule in its new lifecycle.
   private hiddenUpdateResume: (() => void) | undefined;
@@ -95,8 +97,10 @@ export abstract class ChatPaneBase extends OpenClawLightDomElement {
     }
   };
   override connectedCallback() {
+    this.paneLifecycleRoot = this.closest("openclaw-app-shell") ?? this.parentElement;
     document.addEventListener("visibilitychange", this.handleVisibilityChange);
     super.connectedCallback();
+    this.paneLifecycleRoot?.dispatchEvent(new Event(CHAT_PANE_LIFECYCLE_CHANGED_EVENT));
   }
   protected override async scheduleUpdate() {
     while (this.hasUpdated && this.isConnected && document.visibilityState === "hidden") {
@@ -111,6 +115,11 @@ export abstract class ChatPaneBase extends OpenClawLightDomElement {
     this.hiddenUpdateResume?.();
     document.removeEventListener("visibilitychange", this.handleVisibilityChange);
     super.disconnectedCallback();
+    // A removed Home pane cannot bubble its final loading edge. Notify its
+    // former shell so background history does not stay blocked on that pane.
+    const paneRoot = this.paneLifecycleRoot;
+    this.paneLifecycleRoot = null;
+    paneRoot?.dispatchEvent(new Event(CHAT_PANE_LIFECYCLE_CHANGED_EVENT));
   }
 
   // Relative labels still need a minute tick; external PR state is server-pushed.
@@ -154,6 +163,11 @@ export abstract class ChatPaneBase extends OpenClawLightDomElement {
   get transcriptLoading(): boolean {
     const phase = this.state ? getChatHistoryLoadState(this.state).phase : "idle";
     return phase === "pending-connection" || phase === "in-flight";
+  }
+  /** The initial authoritative transcript has a visible result, including errors. */
+  get transcriptReady(): boolean {
+    const phase = this.state ? getChatHistoryLoadState(this.state).phase : "idle";
+    return phase === "committed" || phase === "failed";
   }
   protected get headerOutcomeOwner(): string {
     return `${this.connectionGeneration}:${this.headerPresentationGeneration}`;
