@@ -421,6 +421,19 @@ describe("OpenAIQuicksilverVoiceBridge", () => {
     });
   });
 
+  it("redacts the opaque model from direct provider errors", async () => {
+    const model = "gpt-live-test-canary";
+    const harness = createHarness();
+    await harness.bridge.connect();
+    harness.socket.serverEvent({
+      type: "error",
+      error: { message: `provider rejected ${model}`, code: "invalid_api_key" },
+    });
+
+    expect(JSON.stringify(harness.onError.mock.calls)).not.toContain(model);
+    expect(JSON.stringify(harness.onEvent.mock.calls)).not.toContain(model);
+  });
+
   it("bounds direct tool results before sideband sends", async () => {
     const harness = createHarness();
     await harness.bridge.connect();

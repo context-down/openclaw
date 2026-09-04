@@ -526,6 +526,7 @@ export function createOpenAIQuicksilverBrowserSessionBroker(params: {
       const delegations = new OpenAIQuicksilverDelegationController({
         getSocket: () => connected.socket,
         logger: params.logger,
+        model: offer.request.model,
         onError: (error) => offer.request.gatewayControl?.onError?.(error),
         onFatalError: (error) => {
           if (session) {

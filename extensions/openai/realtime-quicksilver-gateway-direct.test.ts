@@ -101,15 +101,15 @@ describe("GPT-Live Gateway direct transport", () => {
 
   it("rejects startup when onReady closes the bridge reentrantly", async () => {
     let socket: FakeSocket | undefined;
-    let bridge!: OpenAIQuicksilverGatewayBridge;
-    bridge = new OpenAIQuicksilverGatewayBridge({
+    const bridgeRef: { current?: OpenAIQuicksilverGatewayBridge } = {};
+    const bridge = new OpenAIQuicksilverGatewayBridge({
       providerConfig: {},
       model: "gpt-live-test-canary",
       voice: "marin",
       audioFormat: { encoding: "pcm16", sampleRateHz: 24_000, channels: 1 },
       onAudio: vi.fn(),
       onClearAudio: vi.fn(),
-      onReady: () => bridge.close(),
+      onReady: () => bridgeRef.current?.close(),
       runAgentConsult: vi.fn(async () => ({ text: "Done" })),
       logger: { debug: vi.fn(), warn: vi.fn() },
       resolveAuth: vi.fn(async () => ({
@@ -121,6 +121,7 @@ describe("GPT-Live Gateway direct transport", () => {
         return socket;
       },
     });
+    bridgeRef.current = bridge;
 
     const connection = bridge.connect();
     await vi.waitFor(() => expect(socket).toBeDefined());

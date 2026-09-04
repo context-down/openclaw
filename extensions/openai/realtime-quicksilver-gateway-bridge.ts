@@ -351,6 +351,7 @@ export class OpenAIQuicksilverGatewayBridge implements RealtimeVoiceBridge {
     return new OpenAIQuicksilverDelegationController({
       getSocket: () => this.sideband?.socket,
       logger: this.config.logger,
+      model: this.config.model,
       onError: this.config.onError,
       onFatalError: (error) => this.fail(error),
       ...(params?.onAudio ? { onAudio: params.onAudio } : {}),

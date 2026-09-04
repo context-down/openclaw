@@ -29,6 +29,7 @@ function createDelegationHarness(params?: {
     getSocket: params?.getSocket ?? (() => socket),
     handleDelegationInput: params?.handleDelegationInput,
     logger,
+    model: "gpt-live-test-private",
     onFatalError,
     runAgentConsult,
     signal: sessionController.signal,
@@ -598,6 +599,20 @@ describe("GPT-Live sideband protocol", () => {
     expect(onFatalError).toHaveBeenCalledWith(
       expect.objectContaining({ message: "OpenAI GPT-Live sideband error: token expired" }),
     );
+  });
+
+  it("redacts the opaque model from sideband errors before logging or callbacks", () => {
+    const model = "gpt-live-test-private";
+    const { controller, logger, onFatalError } = createDelegationHarness();
+
+    controller.handleEvent({
+      kind: "error",
+      message: `provider rejected ${model}`,
+      fatalAuth: true,
+    });
+
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(model);
+    expect(JSON.stringify(onFatalError.mock.calls)).not.toContain(model);
   });
 
   it("suppresses host cancellation and stops accepting work after teardown", async () => {

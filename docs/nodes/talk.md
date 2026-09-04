@@ -343,37 +343,30 @@ Supported keys: `voice` / `voice_id` / `voiceId`, `model` / `model_id` / `modelI
 }
 ```
 
-OpenAI browser WebRTC and Gateway-relay Talk support native GPT-Live. Select a
-supported native model in **Settings → Talk**; the provider catalog supplies
-the available model IDs. Browser and Gateway-relay WebRTC prefer a ChatGPT
-OAuth subscription profile and fall back to Platform
-API-key auth. OAuth creates the WebRTC call through the Codex backend using
-JSON `sdp` and `session`; Platform keys use multipart call creation at
-`https://api.openai.com/v1/live`. Both use a Gateway-owned public API sideband.
-Other backend bridges connect directly over the Frameless Bidi
-WebSocket and require Platform API-key auth, whose `/v1/live` access is currently
-[waitlist-gated](https://openai.com/form/gpt-live-1-in-the-api/).
+OpenAI browser WebRTC and Gateway-relay Talk support native GPT-Live. Set the
+account-issued model value in `talk.realtime.model`; opaque model values are
+not published through catalogs or diagnostics. Browser Talk uses ChatGPT OAuth
+over WebRTC. Gateway relay keeps OAuth on WebRTC, while Platform API keys use
+the direct bidirectional transport. Other backend consumers also use the
+direct Platform-key path.
 
-The quickest setup is the Control UI: **Settings → Talk**, pick **OpenAI** and
-a `gpt-live-*` model. The OAuth prerequisite is an OpenClaw auth profile
-created with `openclaw models auth login --provider openai` — an existing
-Codex CLI sign-in is not read. GPT-Live also requires the bundled `openai`
-plugin registered in full mode; a restrictive `plugins.allow` list fails
-session creation with "OpenAI GPT-Live browser session broker is unavailable".
+For browser Talk, create an OpenClaw OAuth profile with
+`openclaw models auth login --provider openai`; an existing Codex CLI sign-in
+is not read. Gateway relay can instead use a Platform key configured for the
+OpenAI provider. GPT-Live also requires the bundled `openai` plugin registered
+in full mode; a restrictive `plugins.allow` list fails session creation with
+"OpenAI GPT-Live browser session broker is unavailable".
 Runtime bounds: 8 concurrent sessions per Gateway and a 30-minute session TTL.
 Browser sessions also use 60-second single-use offer tokens.
 
-GPT-Live follows the Codex V3 voice contract: `arbor`, `breeze`, `cove`,
-`ember`, `juniper`, `maple`, `sol`, `spruce`, and `vale`, with `cove` as the
-default. GA Realtime has a separate voice set. A `403 Voice session access
-denied` response does not identify the cause by itself; check the selected
-account, model, and voice. ChatGPT OAuth with `spruce` has current speech
-roundtrip verification; Platform GPT-Live verification requires API access.
+Current Platform-key sessions accept `marin` and `cedar`, with `marin` as the
+default. A rejected session does not identify the cause by itself; check the
+selected account, model, and voice.
 
 | Consumer                    | GPT-Live status                                                         |
 | --------------------------- | ----------------------------------------------------------------------- |
 | Browser Talk                | Supported with client WebRTC and Gateway-owned sideband                 |
-| Gateway-relay Talk          | Supported with Gateway-owned WebRTC and sideband                        |
+| Gateway-relay Talk          | Supported with OAuth WebRTC or direct Platform-key transport            |
 | Discord bidirectional voice | Supported with the Platform-key backend WebSocket                       |
 | Voice Call and telephony    | Supported with the Platform-key backend WebSocket                       |
 | iOS client-owned Talk       | Implemented; GPT-Live device live verification pending                  |

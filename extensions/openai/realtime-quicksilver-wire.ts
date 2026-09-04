@@ -5,13 +5,13 @@ import {
   resolveProviderRequestHeaders,
 } from "openclaw/plugin-sdk/provider-http";
 import { readResponseTextPrefix } from "openclaw/plugin-sdk/response-limit-runtime";
-import { redactSensitiveText } from "openclaw/plugin-sdk/security-runtime";
 import { truncateUtf16Safe } from "openclaw/plugin-sdk/text-utility-runtime";
 import { z } from "zod";
 import {
   buildOpenAIQuicksilverBackgroundContext,
   OPENAI_QUICKSILVER_HOST_CONTROL_INSTRUCTIONS,
 } from "./realtime-quicksilver-instructions.js";
+import { redactOpenAIRealtimeErrorDetail } from "./realtime-quicksilver-redaction.js";
 import {
   isOpenAIGptLiveModel,
   resolveOpenAIQuicksilverVoice,
@@ -33,21 +33,6 @@ const OPENAI_REALTIME_SDP_ANSWER_MAX_BYTES = 256 * 1024;
 const OPENAI_REALTIME_LOCATION_MAX_BYTES = 512;
 const OPENAI_REALTIME_CALL_ID_RE = /^[A-Za-z0-9_-]{1,128}$/u;
 const OPENAI_GPT_LIVE_WAITLIST_URL = "https://openai.com/form/gpt-live-1-in-the-api/";
-
-function redactOpenAIRealtimeErrorDetail(
-  text: string,
-  auth: OpenAIQuicksilverAuth,
-  model?: string,
-): string {
-  let redacted = text;
-  const exactSecrets = [auth.token, auth.type === "oauth" ? auth.accountId : undefined, model];
-  for (const secret of exactSecrets) {
-    if (secret) {
-      redacted = redacted.split(secret).join("[REDACTED]");
-    }
-  }
-  return redactSensitiveText(redacted, { mode: "tools" });
-}
 
 export type OpenAIQuicksilverAuth =
   | { type: "api-key"; token: string }

@@ -2188,6 +2188,47 @@ describe("talk realtime gateway relay", () => {
     });
   });
 
+  it("omits an opaque model from relay descriptors and error events", () => {
+    const model = "gpt-live-test-private";
+    let bridgeRequest: RealtimeVoiceBridgeCreateRequest | undefined;
+    const provider: RealtimeVoiceProviderPlugin = {
+      id: "openai",
+      label: "OpenAI Realtime",
+      isConfigured: () => true,
+      createBridge: (request) => {
+        bridgeRequest = request;
+        return makeRelayTransport();
+      },
+      [Symbol.for("openclaw.internal.realtime-voice-provider.v1")]: {
+        isBrowserSessionConfigured: () => true,
+        projectPublicConfig: ({ config }: { config: Record<string, unknown> }) => {
+          const { model: _model, ...publicConfig } = config;
+          return publicConfig;
+        },
+      },
+    };
+    const events: Array<{ payload: unknown }> = [];
+    const context = {
+      broadcastToConnIds: (_event: string, payload: unknown) => {
+        events.push({ payload });
+      },
+    } as never;
+
+    const session = createTalkRealtimeRelaySession({
+      context,
+      connId: "conn-private-model",
+      provider,
+      providerConfig: { model },
+      instructions: "brief",
+      tools: [],
+      model,
+    });
+    bridgeRequest?.onError?.(new Error("provider rejected session"));
+
+    expect(session).not.toHaveProperty("model");
+    expect(JSON.stringify(events)).not.toContain(model);
+  });
+
   it("does not route assistant echo transcripts back into the realtime model", async () => {
     let bridgeRequest: RealtimeVoiceBridgeCreateRequest | undefined;
     const bridge = makeRelayTransport({

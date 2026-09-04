@@ -17,6 +17,7 @@ import {
   buildOpenAIQuicksilverDelegationPrompt,
   type OpenAIQuicksilverTranscriptEntry,
 } from "./realtime-quicksilver-instructions.js";
+import { redactOpenAIQuicksilverErrorMessage } from "./realtime-quicksilver-redaction.js";
 import type { OpenAIQuicksilverSocket } from "./realtime-quicksilver-sideband.js";
 import {
   boundOpenAIQuicksilverContextItems,
@@ -38,6 +39,7 @@ type PendingDelegation = {
 type OpenAIQuicksilverDelegationControllerOptions = {
   getSocket: () => OpenAIQuicksilverSocket | undefined;
   logger: Pick<PluginLogger, "debug" | "warn">;
+  model: string;
   onError?: (error: Error) => void;
   onFatalError: (error: Error) => void;
   onAudio?: (audio: Buffer) => void;
@@ -121,7 +123,8 @@ export class OpenAIQuicksilverDelegationController {
       return;
     }
     if (event.kind === "error") {
-      const error = new Error(`OpenAI GPT-Live sideband error: ${event.message}`);
+      const message = redactOpenAIQuicksilverErrorMessage(event.message, this.options.model);
+      const error = new Error(`OpenAI GPT-Live sideband error: ${message}`);
       this.options.logger.warn(error.message);
       if (event.fatalAuth) {
         this.options.onFatalError(error);

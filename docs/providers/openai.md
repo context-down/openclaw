@@ -1145,34 +1145,25 @@ value into `plugins.entries.openai.config.personality` when that key is unset.
 
     #### GPT-Live transport paths
 
-    GPT-Live is supported for browser Talk and Gateway-owned `gateway-relay`
-    Talk using ChatGPT OAuth or an enrolled Platform API key. ChatGPT OAuth
-    creates the call through the Codex backend using JSON `sdp` and `session`;
-    Platform API keys use multipart call creation at `/v1/live`. Both attach
-    the Gateway-owned sideband at `wss://api.openai.com/v1/live/<call-id>`.
-    The Gateway relay keeps media, credentials, and sideband control on the Gateway. Discord
-    and Voice Call use the Frameless Bidi
-    `wss://api.openai.com/v1/live?model=...` endpoint with Platform API-key auth.
+    GPT-Live browser Talk uses ChatGPT OAuth with client WebRTC and
+    Gateway-owned control. Gateway-owned `gateway-relay` Talk keeps OAuth on
+    WebRTC, while Platform API keys use the direct bidirectional transport.
+    Other backend consumers also use the direct Platform-key path.
+    Credentials and provider control remain on the Gateway.
 
     Use the account-issued `gpt-live-*` model value. Opaque model values are
     accepted as free-form Talk config but are not published through catalogs
     or diagnostics. Opt in explicitly with `talk.realtime.model`;
     `gpt-realtime-2.1` remains the GA default.
 
-    GPT-Live follows the Codex V3 voice contract: `arbor`, `breeze`, `cove`,
-    `ember`, `juniper`, `maple`, `sol`, `spruce`, and `vale`. OpenClaw defaults
-    to `cove` and maps unsupported configured voices back to it. These are
-    separate from GA Realtime voices; `marin` and `cedar` are GA choices.
-    Current speech-roundtrip verification covers ChatGPT OAuth with `spruce`;
-    Platform GPT-Live uses the same Codex V3 voice contract, but its live
-    verification requires an account with API access.
+    Current Platform-key sessions accept `marin` and `cedar`. OpenClaw defaults
+    to `marin` and maps unsupported configured voices back to it.
 
     Browser WebRTC prerequisites, in order:
 
     1. A ChatGPT OAuth auth profile: `openclaw models auth login --provider openai`.
        An existing Codex CLI (`~/.codex`) sign-in is **not** read; the profile
-       must exist in OpenClaw. A Platform API key with `/v1/live` access works
-       instead, but that access is waitlist-gated.
+       must exist in OpenClaw.
     2. `talk.realtime.model` set to a `gpt-live-*` value — via **Settings →
        Talk** in the Control UI or the config below.
     3. The bundled `openai` plugin registered in full mode. A restrictive
@@ -1195,10 +1186,8 @@ value into `plugins.entries.openai.config.personality` when that key is unset.
     }
     ```
 
-    For the Gateway-owned WebRTC path, select Gateway relay. It prefers the
-    OpenClaw ChatGPT OAuth profile and falls back to an enrolled Platform key
-    from `talk.realtime.providers.openai.apiKey`, an `openai` API-key profile,
-    or `OPENAI_API_KEY`:
+    For Gateway relay, ChatGPT OAuth uses WebRTC. A configured Platform key
+    uses the direct bidirectional transport:
 
     ```json5
     {
@@ -1217,7 +1206,7 @@ value into `plugins.entries.openai.config.personality` when that key is unset.
     | Consumer | GPT-Live status |
     | --- | --- |
     | Browser Talk | Supported with client WebRTC and Gateway-owned sideband |
-    | Gateway-relay Talk | Supported with Gateway-owned WebRTC and sideband |
+    | Gateway-relay Talk | Supported with OAuth WebRTC or direct Platform-key transport |
     | Discord bidirectional voice | Supported with the Platform-key backend WebSocket |
     | Voice Call and telephony | Supported with the Platform-key backend WebSocket |
     | iOS client-owned Talk | Implemented; GPT-Live device live verification pending |

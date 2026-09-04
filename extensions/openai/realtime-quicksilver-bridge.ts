@@ -20,6 +20,7 @@ import {
 } from "openclaw/plugin-sdk/realtime-voice";
 import { rawDataToString } from "openclaw/plugin-sdk/webhook-ingress";
 import WebSocket, { type RawData } from "ws";
+import { redactOpenAIQuicksilverErrorMessage } from "./realtime-quicksilver-redaction.js";
 import {
   connectOpenAIQuicksilverSideband,
   type OpenAIQuicksilverSocket,
@@ -488,12 +489,13 @@ export class OpenAIQuicksilverVoiceBridge implements RealtimeVoiceBridge {
       });
       return;
     }
-    const error = new Error(event.message);
+    const message = redactOpenAIQuicksilverErrorMessage(event.message, this.config.model);
+    const error = new Error(message);
     if (!this.lifecycle.isReady()) {
       failStartup(error, "session start failed");
       return;
     }
-    this.config.onEvent?.({ direction: "server", type: "error", detail: event.message });
+    this.config.onEvent?.({ direction: "server", type: "error", detail: message });
     if (event.fatalAuth) {
       this.fail(connection, error, "authentication failed");
     } else {
