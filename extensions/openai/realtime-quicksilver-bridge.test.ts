@@ -97,7 +97,7 @@ function createHarness(params?: {
     return socket as unknown as OpenAIQuicksilverSocket;
   };
   if (params?.useDefaultSocket) {
-    webSocketConstructorMock.mockImplementation((url: string, options: ClientOptions) => {
+    webSocketConstructorMock.mockImplementation(function (url: string, options: ClientOptions) {
       connections.push({ url, options });
       queueMicrotask(() => socket.open());
       return socket;
@@ -392,9 +392,11 @@ describe("OpenAIQuicksilverVoiceBridge", () => {
 
     expect(harness.onReady).toHaveBeenCalledOnce();
     if (reason === "error") {
-      expect(harness.onError).toHaveBeenCalledWith(
-        new Error("GPT-Live WebSocket closed during startup"),
-      );
+      expect(harness.onError).toHaveBeenCalledOnce();
+      expect(harness.onError.mock.calls[0]?.[0]).toMatchObject({
+        message: "GPT-Live WebSocket closed during startup",
+        name: "Error",
+      });
     } else {
       expect(harness.onError).not.toHaveBeenCalled();
     }
