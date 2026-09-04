@@ -2190,6 +2190,7 @@ describe("talk realtime gateway relay", () => {
 
   it("omits an opaque model from relay descriptors and error events", () => {
     const model = "gpt-live-test-private";
+    const sensitiveDetails = ["sensitive-route", "sensitive-session", "sensitive-transcript"];
     let bridgeRequest: RealtimeVoiceBridgeCreateRequest | undefined;
     const provider: RealtimeVoiceProviderPlugin = {
       id: "openai",
@@ -2223,10 +2224,14 @@ describe("talk realtime gateway relay", () => {
       tools: [],
       model,
     });
-    bridgeRequest?.onError?.(new Error(`provider rejected ${model}`));
+    bridgeRequest?.onError?.(new Error(`provider rejected ${model} ${sensitiveDetails.join(" ")}`));
 
     expect(session).not.toHaveProperty("model");
-    expect(JSON.stringify(events)).not.toContain(model);
+    const projected = JSON.stringify(events);
+    expect(projected).toContain("Realtime provider error.");
+    for (const privateValue of [model, ...sensitiveDetails]) {
+      expect(projected).not.toContain(privateValue);
+    }
   });
 
   it("does not route assistant echo transcripts back into the realtime model", async () => {

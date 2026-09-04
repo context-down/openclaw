@@ -19,6 +19,15 @@ export function redactOpenAIRealtimeErrorDetail(
   return redactSensitiveText(redacted, { mode: "tools" });
 }
 
-export function redactOpenAIQuicksilverErrorMessage(text: string, model: string): string {
-  return redactOpenAIRealtimeErrorDetail(text, undefined, model);
+export function projectOpenAIQuicksilverErrorMessage(
+  kind: "gateway" | "provider" | "transport",
+): string {
+  switch (kind) {
+    case "gateway":
+      return "OpenAI GPT-Live gateway relay failed";
+    case "provider":
+      return "OpenAI GPT-Live provider error";
+    case "transport":
+      return "OpenAI GPT-Live transport failed";
+  }
 }

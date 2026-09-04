@@ -273,10 +273,11 @@ describe("Realtime call creation", () => {
     });
   });
 
-  it("redacts an opaque model echoed by the provider", async () => {
+  it("omits private provider detail from call creation errors", async () => {
     const model = "gpt-live-test-canary";
+    const sensitiveDetail = "sensitive-route sensitive-session sensitive-transcript";
     const fetchImpl = vi.fn(
-      async () => new Response(`provider rejected ${model} for this route`, { status: 422 }),
+      async () => new Response(`provider rejected ${model} ${sensitiveDetail}`, { status: 422 }),
     );
     const promise = createOpenAIQuicksilverCall({
       auth: { type: "api-key", token: "platform-key" },
@@ -289,7 +290,7 @@ describe("Realtime call creation", () => {
     await expect(promise).rejects.toMatchObject({
       name: "OpenAIQuicksilverCallError",
       status: 422,
-      message: expect.not.stringContaining(model),
+      message: "GPT-Live call creation failed (422)",
     });
   });
 

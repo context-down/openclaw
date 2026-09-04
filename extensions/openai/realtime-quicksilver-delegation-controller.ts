@@ -17,7 +17,7 @@ import {
   buildOpenAIQuicksilverDelegationPrompt,
   type OpenAIQuicksilverTranscriptEntry,
 } from "./realtime-quicksilver-instructions.js";
-import { redactOpenAIQuicksilverErrorMessage } from "./realtime-quicksilver-redaction.js";
+import { projectOpenAIQuicksilverErrorMessage } from "./realtime-quicksilver-redaction.js";
 import type { OpenAIQuicksilverSocket } from "./realtime-quicksilver-sideband.js";
 import {
   boundOpenAIQuicksilverContextItems,
@@ -110,7 +110,7 @@ export class OpenAIQuicksilverDelegationController {
       return;
     }
     if (event.kind === "unknown") {
-      this.options.logger.debug?.(`OpenAI GPT-Live ignored sideband event: ${event.eventType}`);
+      this.options.logger.debug?.("OpenAI GPT-Live ignored an unsupported sideband event");
       return;
     }
     if (event.kind === "session-started") {
@@ -123,8 +123,7 @@ export class OpenAIQuicksilverDelegationController {
       return;
     }
     if (event.kind === "error") {
-      const message = redactOpenAIQuicksilverErrorMessage(event.message, this.options.model);
-      const error = new Error(`OpenAI GPT-Live sideband error: ${message}`);
+      const error = new Error(projectOpenAIQuicksilverErrorMessage("provider"));
       this.options.logger.warn(error.message);
       if (event.fatalAuth) {
         this.options.onFatalError(error);

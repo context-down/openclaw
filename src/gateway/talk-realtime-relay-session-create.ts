@@ -23,6 +23,7 @@ import {
 import {
   buildTalkRealtimeRelayIssuePayload as relayIssuePayload,
   createTalkRealtimeRelayIssue as realtimeRelayIssue,
+  projectTalkRealtimeRelayProviderError as projectRelayProviderErrorMessage,
 } from "./talk-realtime-relay-issues.js";
 import {
   cancelTalkRealtimeRelayProviderToolCall,
@@ -61,17 +62,6 @@ const RELAY_OUTPUT_AUDIO_FRAME_BYTES = 960;
 
 function isRelayAssistantEchoTranscript(session: RelaySession | undefined, text: string): boolean {
   return session?.harness.isLikelyAssistantEchoTranscript(text) ?? false;
-}
-
-function projectRelayProviderErrorMessage(
-  message: string,
-  configuredModel: string | undefined,
-  publicModel: string | undefined,
-): string {
-  if (!configuredModel || configuredModel === publicModel) {
-    return message;
-  }
-  return message.split(configuredModel).join("[REDACTED]");
 }
 
 /** Creates a realtime voice relay session and returns the browser audio contract. */

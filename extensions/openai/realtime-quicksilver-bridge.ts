@@ -1,6 +1,5 @@
 // GPT-Live backend bridge over the Frameless Bidi WebSocket protocol used by Codex realtime v3.
 import { randomUUID } from "node:crypto";
-import { toErrorObject } from "openclaw/plugin-sdk/error-runtime";
 import { canonicalizeBase64 } from "openclaw/plugin-sdk/media-runtime";
 import type { PluginLogger } from "openclaw/plugin-sdk/plugin-entry";
 import { captureWsEvent } from "openclaw/plugin-sdk/proxy-capture";
@@ -17,7 +16,7 @@ import {
 } from "openclaw/plugin-sdk/realtime-voice";
 import { rawDataToString } from "openclaw/plugin-sdk/webhook-ingress";
 import WebSocket, { type RawData } from "ws";
-import { redactOpenAIQuicksilverErrorMessage } from "./realtime-quicksilver-redaction.js";
+import { projectOpenAIQuicksilverErrorMessage } from "./realtime-quicksilver-redaction.js";
 import {
   connectOpenAIQuicksilverSideband,
   type OpenAIQuicksilverSocket,
@@ -483,7 +482,7 @@ export class OpenAIQuicksilverVoiceBridge implements RealtimeVoiceBridge {
       });
       return;
     }
-    const message = redactOpenAIQuicksilverErrorMessage(event.message, this.config.model);
+    const message = projectOpenAIQuicksilverErrorMessage("provider");
     const error = new Error(message);
     if (!this.lifecycle.isReady()) {
       failStartup(error, "session start failed");
@@ -552,13 +551,8 @@ export class OpenAIQuicksilverVoiceBridge implements RealtimeVoiceBridge {
     return true;
   }
 
-  private redactError(error: unknown): Error {
-    const source = toErrorObject(error, "OpenAI GPT-Live transport failed");
-    const redacted = new Error(
-      redactOpenAIQuicksilverErrorMessage(source.message, this.config.model),
-    );
-    redacted.name = redactOpenAIQuicksilverErrorMessage(source.name, this.config.model);
-    return redacted;
+  private redactError(_error: unknown): Error {
+    return new Error(projectOpenAIQuicksilverErrorMessage("transport"));
   }
 
   private failLifecycle(connection: RealtimeVoiceSessionConnection): boolean {

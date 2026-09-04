@@ -595,24 +595,31 @@ describe("GPT-Live sideband protocol", () => {
     const { controller, logger, onFatalError } = createDelegationHarness();
     controller.handleEvent({ kind: "error", message: "token expired", fatalAuth: true });
 
-    expect(logger.warn).toHaveBeenCalledWith("OpenAI GPT-Live sideband error: token expired");
+    expect(logger.warn).toHaveBeenCalledWith("OpenAI GPT-Live provider error");
     expect(onFatalError).toHaveBeenCalledWith(
-      expect.objectContaining({ message: "OpenAI GPT-Live sideband error: token expired" }),
+      expect.objectContaining({ message: "OpenAI GPT-Live provider error" }),
     );
   });
 
   it("redacts the opaque model from sideband errors before logging or callbacks", () => {
     const model = "gpt-live-test-private";
+    const sensitiveDetails = ["sensitive-route", "sensitive-session", "sensitive-transcript"];
     const { controller, logger, onFatalError } = createDelegationHarness();
 
     controller.handleEvent({
       kind: "error",
-      message: `provider rejected ${model}`,
+      message: `provider rejected ${model} ${sensitiveDetails.join(" ")}`,
       fatalAuth: true,
     });
 
-    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(model);
-    expect(JSON.stringify(onFatalError.mock.calls)).not.toContain(model);
+    expect(logger.warn).toHaveBeenCalledWith("OpenAI GPT-Live provider error");
+    expect(onFatalError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "OpenAI GPT-Live provider error" }),
+    );
+    const projected = JSON.stringify([logger.warn.mock.calls, onFatalError.mock.calls]);
+    for (const privateValue of [model, ...sensitiveDetails]) {
+      expect(projected).not.toContain(privateValue);
+    }
   });
 
   it("suppresses host cancellation and stops accepting work after teardown", async () => {

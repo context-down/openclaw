@@ -331,7 +331,7 @@ describe("OpenAIQuicksilverVoiceBridge", () => {
       error: { message: "invalid live session" },
     });
 
-    await expect(connecting).rejects.toThrow("invalid live session");
+    await expect(connecting).rejects.toThrow("OpenAI GPT-Live transport failed");
     expect(harness.onError).not.toHaveBeenCalled();
     expect(harness.onClose).not.toHaveBeenCalled();
     expect(harness.bridge.isConnected()).toBe(false);
@@ -394,7 +394,7 @@ describe("OpenAIQuicksilverVoiceBridge", () => {
     if (reason === "error") {
       expect(harness.onError).toHaveBeenCalledOnce();
       expect(harness.onError.mock.calls[0]?.[0]).toMatchObject({
-        message: "GPT-Live WebSocket closed during startup",
+        message: "OpenAI GPT-Live transport failed",
         name: "Error",
       });
     } else {
@@ -450,24 +450,32 @@ describe("OpenAIQuicksilverVoiceBridge", () => {
 
   it("redacts the opaque model from direct provider errors", async () => {
     const model = "gpt-live-test-canary";
+    const sensitiveDetails = ["sensitive-route", "sensitive-session", "sensitive-transcript"];
     const harness = createHarness();
     await harness.bridge.connect();
     harness.socket.serverEvent({
       type: "error",
-      error: { message: `provider rejected ${model}`, code: "invalid_api_key" },
+      error: {
+        message: `provider rejected ${model} ${sensitiveDetails.join(" ")}`,
+        code: "invalid_api_key",
+      },
     });
 
-    expect(JSON.stringify(harness.onError.mock.calls)).not.toContain(model);
-    expect(JSON.stringify(harness.onEvent.mock.calls)).not.toContain(model);
+    expect(harness.onError).toHaveBeenCalledWith(new Error("OpenAI GPT-Live transport failed"));
+    const projected = JSON.stringify([harness.onError.mock.calls, harness.onEvent.mock.calls]);
+    for (const privateValue of [model, ...sensitiveDetails]) {
+      expect(projected).not.toContain(privateValue);
+    }
   });
 
   it("redacts raw startup and active transport errors", async () => {
     const model = "sensitive-model-marker";
+    const sensitiveDetails = ["sensitive-route", "sensitive-session", "sensitive-transcript"];
     const startup = createHarness({
       autoStart: false,
       model,
       afterOpen: (socket) => {
-        const error = new Error(`startup rejected ${model}`);
+        const error = new Error(`startup rejected ${model} ${sensitiveDetails.join(" ")}`);
         error.name = `Transport${model}`;
         socket.emit("error", error);
       },
@@ -475,8 +483,10 @@ describe("OpenAIQuicksilverVoiceBridge", () => {
 
     const startupError = await startup.bridge.connect().catch((error: unknown) => error);
     expect(startupError).toBeInstanceOf(Error);
-    expect((startupError as Error).message).not.toContain(model);
-    expect((startupError as Error).name).not.toContain(model);
+    expect(startupError).toMatchObject({
+      message: "OpenAI GPT-Live transport failed",
+      name: "Error",
+    });
 
     const active = createHarness({ model });
     await active.bridge.connect();
@@ -487,8 +497,10 @@ describe("OpenAIQuicksilverVoiceBridge", () => {
     expect(active.onError).toHaveBeenCalledOnce();
     const activeError = active.onError.mock.calls[0]?.[0] as Error;
     expect(activeError).toBeInstanceOf(Error);
-    expect(activeError.message).not.toContain(model);
-    expect(activeError.name).not.toContain(model);
+    expect(activeError).toMatchObject({
+      message: "OpenAI GPT-Live transport failed",
+      name: "Error",
+    });
   });
 
   it("captures only fixed metadata for private transport activity", async () => {

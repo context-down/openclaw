@@ -38,3 +38,11 @@ export function buildTalkRealtimeRelayIssuePayload(
     phase: issue.phase,
   };
 }
+
+export function projectTalkRealtimeRelayProviderError(
+  message: string,
+  configuredModel: string | undefined,
+  publicModel: string | undefined,
+): string {
+  return configuredModel && configuredModel !== publicModel ? "Realtime provider error." : message;
+}

@@ -15,7 +15,7 @@ import type {
   OpenAIQuicksilverAudioPeerCallbacks,
   OpenAIQuicksilverAudioPeerContract,
 } from "./realtime-quicksilver-peer.runtime.js";
-import { redactOpenAIQuicksilverErrorMessage } from "./realtime-quicksilver-redaction.js";
+import { projectOpenAIQuicksilverErrorMessage } from "./realtime-quicksilver-redaction.js";
 import {
   releaseOpenAIQuicksilverSession,
   reserveOpenAIQuicksilverSession,
@@ -438,13 +438,8 @@ export class OpenAIQuicksilverGatewayBridge implements RealtimeVoiceBridge {
     this.teardown("error", () => this.config.onError?.(redactedError));
   }
 
-  private redactError(error: unknown): Error {
-    const source = toErrorObject(error, "OpenAI GPT-Live gateway relay failed");
-    const redacted = new Error(
-      redactOpenAIQuicksilverErrorMessage(source.message, this.config.model),
-    );
-    redacted.name = redactOpenAIQuicksilverErrorMessage(source.name, this.config.model);
-    return redacted;
+  private redactError(_error: unknown): Error {
+    return new Error(projectOpenAIQuicksilverErrorMessage("gateway"));
   }
 
   private teardown(

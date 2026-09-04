@@ -3,6 +3,7 @@ import { OpenAIQuicksilverGatewayBridge } from "./realtime-quicksilver-gateway-b
 import { emitSideband, FakeSocket } from "./realtime-quicksilver.test-helpers.js";
 
 const OPAQUE_MODEL = "gpt-live-test-canary";
+const SENSITIVE_DETAILS = ["sensitive-route", "sensitive-session", "sensitive-transcript"];
 
 function createDirectBridge(params?: { socketFactory?: () => FakeSocket }) {
   let socket: FakeSocket | undefined;
@@ -43,10 +44,14 @@ function createDirectBridge(params?: { socketFactory?: () => FakeSocket }) {
   };
 }
 
-function expectNoOpaqueModel(harness: ReturnType<typeof createDirectBridge>): void {
-  expect(
-    JSON.stringify([...harness.logger.debug.mock.calls, ...harness.logger.warn.mock.calls]),
-  ).not.toContain(OPAQUE_MODEL);
+function expectNoPrivateDetail(harness: ReturnType<typeof createDirectBridge>): void {
+  const projected = JSON.stringify([
+    ...harness.logger.debug.mock.calls,
+    ...harness.logger.warn.mock.calls,
+  ]);
+  for (const privateValue of [OPAQUE_MODEL, ...SENSITIVE_DETAILS]) {
+    expect(projected).not.toContain(privateValue);
+  }
 }
 
 describe("GPT-Live gateway relay error projection", () => {
@@ -55,7 +60,9 @@ describe("GPT-Live gateway relay error projection", () => {
       socketFactory: () => {
         const socket = new FakeSocket("manual");
         queueMicrotask(() => {
-          const error = new Error(`provider rejected ${OPAQUE_MODEL}`);
+          const error = new Error(
+            `provider rejected ${OPAQUE_MODEL} ${SENSITIVE_DETAILS.join(" ")}`,
+          );
           error.name = `Provider${OPAQUE_MODEL}`;
           socket.readyState = 1;
           socket.emit("open");
@@ -68,12 +75,12 @@ describe("GPT-Live gateway relay error projection", () => {
     const error = await harness.bridge.connect().catch((cause: unknown) => cause);
 
     expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toContain("[REDACTED]");
-    expect((error as Error).message).not.toContain(OPAQUE_MODEL);
-    expect((error as Error).name).toContain("[REDACTED]");
-    expect((error as Error).name).not.toContain(OPAQUE_MODEL);
+    expect(error).toMatchObject({
+      message: "OpenAI GPT-Live gateway relay failed",
+      name: "Error",
+    });
     expect(harness.onError).not.toHaveBeenCalled();
-    expectNoOpaqueModel(harness);
+    expectNoPrivateDetail(harness);
   });
 
   it.each(["error", "close"] as const)(
@@ -92,17 +99,30 @@ describe("GPT-Live gateway relay error projection", () => {
       await connection;
 
       if (terminalEvent === "error") {
-        harness.readSocket().emit("error", new Error(`provider rejected ${OPAQUE_MODEL}`));
+        harness
+          .readSocket()
+          .emit(
+            "error",
+            new Error(`provider rejected ${OPAQUE_MODEL} ${SENSITIVE_DETAILS.join(" ")}`),
+          );
       } else {
-        harness.readSocket().emit("close", 1011, Buffer.from(`provider rejected ${OPAQUE_MODEL}`));
+        harness
+          .readSocket()
+          .emit(
+            "close",
+            1011,
+            Buffer.from(`provider rejected ${OPAQUE_MODEL} ${SENSITIVE_DETAILS.join(" ")}`),
+          );
       }
 
       expect(harness.onError).toHaveBeenCalledOnce();
       const reported = harness.onError.mock.calls[0]?.[0];
-      expect(reported?.message).toContain("[REDACTED]");
-      expect(reported?.message).not.toContain(OPAQUE_MODEL);
+      expect(reported).toMatchObject({
+        message: "OpenAI GPT-Live gateway relay failed",
+        name: "Error",
+      });
       expect(harness.onClose).toHaveBeenCalledWith("error");
-      expectNoOpaqueModel(harness);
+      expectNoPrivateDetail(harness);
     },
   );
 });

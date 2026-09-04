@@ -105,7 +105,7 @@ describe("OpenAI Quicksilver gateway bridge lifecycle", () => {
 
       expect(onError).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({
-          message: "OpenAI GPT-Live sideband error: temporary voice failure",
+          message: "OpenAI GPT-Live provider error",
         }),
       );
       expect(onTranscript).toHaveBeenCalledWith("assistant", "Recovered", true);

@@ -411,7 +411,7 @@ function describeOpenAIQuicksilverCallError(
   ) {
     return "The GPT-Live model value is not permitted. Choose a supported GPT-Live model in Settings > Talk.";
   }
-  return `GPT-Live call creation failed (${status})${detail ? `: ${detail}` : ""}`;
+  return `GPT-Live call creation failed (${status})`;
 }
 
 export async function createOpenAIQuicksilverCall(
