@@ -426,7 +426,10 @@ async function runReclamationWorkerPort(
       // Rollback spills take EXCLUSIVE and block the parent's guard read.
       // Defer spills until COMMIT at transaction-sized memory cost. This one-shot
       // connection closes below; the setting never reaches other callers.
-      if (db.prepare("PRAGMA journal_mode").get()?.journal_mode === "delete") {
+      if (
+        // sqlite-allow-raw: connection-local journal mode gates rollback spill coordination.
+        db.prepare("PRAGMA journal_mode").get()?.journal_mode === "delete"
+      ) {
         db.exec("PRAGMA cache_spill = OFF"); // sqlite-allow-raw: connection-local pager coordination.
       }
     }
