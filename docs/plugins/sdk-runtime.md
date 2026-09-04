@@ -53,6 +53,13 @@ Internal OpenClaw runtime code follows the same direction: load config once at t
 
 Provider and channel execution paths must use the active runtime config snapshot, not a file snapshot returned for config readback or editing. File snapshots preserve source values such as SecretRef markers for UI and writes; provider callbacks need the resolved runtime view. When a helper may be called with either the active source snapshot or the active runtime snapshot, route through `selectApplicableRuntimeConfig()` before reading credentials.
 
+Retained channel monitors can bind `createRuntimeConfigReader(cfg)` from
+`openclaw/plugin-sdk/runtime-config-snapshot` once at startup. The reader follows
+runtime updates when the supplied config belongs to the active runtime, and
+preserves an explicitly scoped config otherwise. A config bound before any runtime
+is published stays scoped. Read once per turn and carry that snapshot through it;
+process-wide controls such as diagnostics should read at the point of emission.
+
 ## Reusable runtime utilities
 
 Native command probes should use `runCommandWithTimeout` from
@@ -1224,7 +1231,7 @@ A service can declare `reload: { configPrefixes: ["myConfig.service"] }` alongsi
 its `id`, `start`, and `stop`. After a matching config change commits, the Gateway
 stops that service and calls `start(ctx)` again with the new `ctx.config`. Only
 loaded services declaring the matching prefix are replaced; overlapping owners
-all refresh. Existing narrower restart or no-op policies still take precedence.
+all refresh. Existing equal or narrower restart or no-op policies still take precedence.
 Each start receives a new capability lease and health reporter. Stop must release
 resources before resolving; failed replacement cleanup or startup triggers
 Gateway recovery. A full plugin replacement subsumes these service restarts.
