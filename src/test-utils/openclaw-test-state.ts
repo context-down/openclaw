@@ -370,10 +370,10 @@ export async function createOpenClawTestState(
     };
     restoreEnv = state.restoreEnv;
 
-    await fs.mkdir(paths.stateDir, { recursive: true });
+    await fs.mkdir(paths.stateDir, { recursive: true, mode: 0o700 });
     await fs.mkdir(paths.workspaceDir, { recursive: true });
     if (layout !== "state-only") {
-      await fs.mkdir(paths.home, { recursive: true });
+      await fs.mkdir(paths.home, { recursive: true, mode: 0o700 });
     }
     if (config !== undefined) {
       await writeJsonFile(paths.configPath, config);
