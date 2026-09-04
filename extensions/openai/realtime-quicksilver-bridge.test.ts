@@ -2,13 +2,19 @@ import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import type { ClientOptions } from "ws";
 
-const { captureWsEventMock } = vi.hoisted(() => ({
+const { captureWsEventMock, webSocketConstructorMock } = vi.hoisted(() => ({
   captureWsEventMock: vi.fn(),
+  webSocketConstructorMock: vi.fn(),
 }));
 
 vi.mock("openclaw/plugin-sdk/proxy-capture", async (importOriginal) => {
   const actual = await importOriginal<typeof import("openclaw/plugin-sdk/proxy-capture")>();
   return { ...actual, captureWsEvent: captureWsEventMock };
+});
+
+vi.mock("ws", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("ws")>();
+  return { ...actual, default: webSocketConstructorMock };
 });
 
 import { OpenAIQuicksilverVoiceBridge } from "./realtime-quicksilver-bridge.js";
@@ -80,6 +86,7 @@ function createHarness(params?: {
   afterOpen?: (socket: FakeSocket) => void;
   model?: string;
   resolveAuth?: () => Promise<{ type: "api-key"; token: string }>;
+  useDefaultSocket?: boolean;
 }) {
   const socket = new FakeSocket(params?.autoStart, params?.afterOpen);
   socket.deferClose = params?.deferClose ?? false;
@@ -89,6 +96,13 @@ function createHarness(params?: {
     queueMicrotask(() => socket.open());
     return socket as unknown as OpenAIQuicksilverSocket;
   };
+  if (params?.useDefaultSocket) {
+    webSocketConstructorMock.mockImplementation((url: string, options: ClientOptions) => {
+      connections.push({ url, options });
+      queueMicrotask(() => socket.open());
+      return socket;
+    });
+  }
   const onAudio = vi.fn();
   const onTranscript = vi.fn();
   const onToolCall = vi.fn();
@@ -107,7 +121,7 @@ function createHarness(params?: {
         ? { encoding: "g711_ulaw", sampleRateHz: 8000, channels: 1 }
         : { encoding: "pcm16", sampleRateHz: 24000, channels: 1 },
     resolveAuth: params?.resolveAuth ?? (async () => ({ type: "api-key", token: "test-key" })),
-    webSocketFactory,
+    ...(params?.useDefaultSocket ? {} : { webSocketFactory }),
     onAudio,
     onClearAudio: vi.fn(),
     onTranscript,
@@ -459,7 +473,7 @@ describe("OpenAIQuicksilverVoiceBridge", () => {
 
     const startupError = await startup.bridge.connect().catch((error: unknown) => error);
     expect(startupError).toBeInstanceOf(Error);
-    expect(JSON.stringify(startupError)).not.toContain(model);
+    expect((startupError as Error).message).not.toContain(model);
     expect((startupError as Error).name).not.toContain(model);
 
     const active = createHarness({ model });
@@ -475,7 +489,7 @@ describe("OpenAIQuicksilverVoiceBridge", () => {
     captureWsEventMock.mockClear();
     const model = "sensitive-model-marker";
     const transcript = "sensitive-frame-marker";
-    const harness = createHarness({ model });
+    const harness = createHarness({ model, useDefaultSocket: true });
 
     await harness.bridge.connect();
     harness.bridge.sendUserMessage(transcript);
@@ -484,10 +498,21 @@ describe("OpenAIQuicksilverVoiceBridge", () => {
       turn: { role: "user", transcript },
     });
 
-    const captured = JSON.stringify(captureWsEventMock.mock.calls);
+    expect(harness.connections[0]?.options).not.toHaveProperty("agent");
+    expect(captureWsEventMock).toHaveBeenCalled();
+    const captureCalls = captureWsEventMock.mock.calls as Array<[Record<string, unknown>]>;
+    for (const [event] of captureCalls) {
+      expect(event).toEqual({
+        url: "wss://realtime.invalid/private",
+        direction: expect.stringMatching(/^(inbound|outbound|local)$/),
+        kind: expect.stringMatching(/^ws-(frame|open)$/),
+        flowId: "private-realtime",
+        meta: { provider: "openai", capability: "gpt-live-voice" },
+      });
+    }
+    const captured = JSON.stringify(captureCalls);
     expect(captured).not.toContain(model);
     expect(captured).not.toContain(transcript);
-    expect(captureWsEventMock.mock.calls.every(([event]) => !("payload" in event))).toBe(true);
   });
 
   it("bounds direct tool results before sideband sends", async () => {
