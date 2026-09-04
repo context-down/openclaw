@@ -1,4 +1,4 @@
-// Gateway-owned GPT-Live bridge: OAuth WebRTC or Platform-key Frameless Bidi.
+// Gateway-owned GPT-Live bridge over the Platform-key Frameless Bidi transport.
 import { randomUUID } from "node:crypto";
 import { toErrorObject } from "openclaw/plugin-sdk/error-runtime";
 import type { PluginLogger } from "openclaw/plugin-sdk/plugin-entry";
@@ -15,6 +15,7 @@ import type {
   OpenAIQuicksilverAudioPeerCallbacks,
   OpenAIQuicksilverAudioPeerContract,
 } from "./realtime-quicksilver-peer.runtime.js";
+import { redactOpenAIQuicksilverErrorMessage } from "./realtime-quicksilver-redaction.js";
 import {
   releaseOpenAIQuicksilverSession,
   reserveOpenAIQuicksilverSession,
@@ -198,7 +199,7 @@ export class OpenAIQuicksilverGatewayBridge implements RealtimeVoiceBridge {
       }
     } catch (error) {
       this.releaseResources("abort");
-      throw toErrorObject(error, "OpenAI GPT-Live gateway relay failed");
+      throw this.redactError(error);
     }
   }
 
@@ -433,7 +434,17 @@ export class OpenAIQuicksilverGatewayBridge implements RealtimeVoiceBridge {
   }
 
   private fail(error: Error): void {
-    this.teardown("error", () => this.config.onError?.(error));
+    const redactedError = this.redactError(error);
+    this.teardown("error", () => this.config.onError?.(redactedError));
+  }
+
+  private redactError(error: unknown): Error {
+    const source = toErrorObject(error, "OpenAI GPT-Live gateway relay failed");
+    const redacted = new Error(
+      redactOpenAIQuicksilverErrorMessage(source.message, this.config.model),
+    );
+    redacted.name = redactOpenAIQuicksilverErrorMessage(source.name, this.config.model);
+    return redacted;
   }
 
   private teardown(
