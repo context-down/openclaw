@@ -55,9 +55,11 @@ describe("GPT-Live gateway relay error projection", () => {
       socketFactory: () => {
         const socket = new FakeSocket("manual");
         queueMicrotask(() => {
+          const error = new Error(`provider rejected ${OPAQUE_MODEL}`);
+          error.name = `Provider${OPAQUE_MODEL}`;
           socket.readyState = 1;
           socket.emit("open");
-          socket.emit("error", new Error(`provider rejected ${OPAQUE_MODEL}`));
+          socket.emit("error", error);
         });
         return socket;
       },
@@ -68,6 +70,8 @@ describe("GPT-Live gateway relay error projection", () => {
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toContain("[REDACTED]");
     expect((error as Error).message).not.toContain(OPAQUE_MODEL);
+    expect((error as Error).name).toContain("[REDACTED]");
+    expect((error as Error).name).not.toContain(OPAQUE_MODEL);
     expect(harness.onError).not.toHaveBeenCalled();
     expectNoOpaqueModel(harness);
   });

@@ -7,6 +7,7 @@ const mocks = await vi.hoisted(async () => {
   return createOpenAIRealtimeMockState();
 });
 const {
+  FakeWebSocket,
   execFileSyncMock,
   fetchWithSsrFGuardMock,
   isProviderAuthProfileConfiguredMock,
@@ -283,7 +284,6 @@ describe("OpenAI realtime voice provider routing", () => {
       providerConfig: { model: OPAQUE_REALTIME_MODEL },
       agentId: "main",
       expected: false,
-      expectAgentDir: false,
     },
     {
       $name: "gateway-relay | opaque model | ChatGPT OAuth | Azure endpoint | not ready",
@@ -295,7 +295,6 @@ describe("OpenAI realtime voice provider routing", () => {
       },
       agentId: "main",
       expected: false,
-      expectAgentDir: false,
     },
     {
       $name:
@@ -304,7 +303,6 @@ describe("OpenAI realtime voice provider routing", () => {
       providerConfig: { model: "gpt-realtime-2.1", apiKey: "test-api-key-platform" },
       agentId: "main",
       expected: undefined,
-      expectAgentDir: false,
     },
     {
       $name:
@@ -317,7 +315,6 @@ describe("OpenAI realtime voice provider routing", () => {
       },
       agentId: "main",
       expected: undefined,
-      expectAgentDir: false,
     },
     {
       $name: "gateway-relay | opaque model | Platform API key + OAuth | Azure endpoint | not ready",
@@ -329,7 +326,6 @@ describe("OpenAI realtime voice provider routing", () => {
       },
       agentId: "main",
       expected: false,
-      expectAgentDir: false,
     },
     {
       $name: "gateway-relay | opaque model | Platform API key + OAuth | standard endpoint | ready",
@@ -337,7 +333,6 @@ describe("OpenAI realtime voice provider routing", () => {
       providerConfig: { model: OPAQUE_REALTIME_MODEL, apiKey: "test-api-key-platform" },
       agentId: "main",
       expected: true,
-      expectAgentDir: false,
     },
     {
       $name: "browser | opaque model | Platform API key + OAuth | standard endpoint | ready",
@@ -345,7 +340,6 @@ describe("OpenAI realtime voice provider routing", () => {
       providerConfig: { model: OPAQUE_REALTIME_MODEL, apiKey: "test-api-key-platform" },
       agentId: "main",
       expected: true,
-      expectAgentDir: false,
     },
     {
       $name: "gateway-relay | opaque model | ChatGPT OAuth | standard endpoint | not ready",
@@ -353,7 +347,6 @@ describe("OpenAI realtime voice provider routing", () => {
       providerConfig: { model: OPAQUE_REALTIME_MODEL },
       agentId: "main",
       expected: false,
-      expectAgentDir: false,
     },
     {
       $name:
@@ -362,7 +355,6 @@ describe("OpenAI realtime voice provider routing", () => {
       providerConfig: { model: OPAQUE_REALTIME_MODEL },
       agentId: "voice-agent",
       expected: false,
-      expectAgentDir: false,
     },
     {
       $name: "browser | opaque model | ChatGPT OAuth | standard endpoint | not ready",
@@ -370,9 +362,8 @@ describe("OpenAI realtime voice provider routing", () => {
       providerConfig: { model: OPAQUE_REALTIME_MODEL },
       agentId: "main",
       expected: false,
-      expectAgentDir: false,
     },
-  ])("$name", ({ surface, providerConfig, agentId, expected, expectAgentDir }) => {
+  ])("$name", ({ surface, providerConfig, agentId, expected }) => {
     isProviderAuthProfileConfiguredMock.mockImplementation(
       ({ profileTypes }: { profileTypes?: readonly string[] }) =>
         profileTypes?.includes("oauth") === true,
@@ -391,14 +382,6 @@ describe("OpenAI realtime voice provider routing", () => {
           : internalApi.isGatewayRelayConfigured({ cfg, providerConfig, agentId });
 
     expect(readiness).toBe(expected);
-    if (expectAgentDir) {
-      expect(isProviderAuthProfileConfiguredMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          agentDir: expect.stringContaining("voice-agent"),
-          profileTypes: ["oauth"],
-        }),
-      );
-    }
   });
 
   it("routes an explicit unlisted gpt-live alias through the broker with Platform auth", async () => {
@@ -761,6 +744,33 @@ describe("OpenAI realtime voice provider routing", () => {
       }),
     ).rejects.toThrow("GPT-Live Talk requires an OpenAI Platform API key");
     expect(createBrowserSession).not.toHaveBeenCalled();
+  });
+
+  it("rejects OAuth-only gpt-live gateway startup before provider I/O", async () => {
+    resolveProviderAuthProfileApiKeyMock.mockImplementation(
+      async ({ profileTypes }: { profileTypes?: readonly string[] }) =>
+        profileTypes?.includes("oauth")
+          ? createTestJwt({
+              "https://api.openai.com/auth": { chatgpt_account_id: "account-123" },
+            })
+          : undefined,
+    );
+    const provider = buildOpenAIRealtimeVoiceProvider();
+    const bridge = provider.createBridge({
+      providerConfig: { model: OPAQUE_REALTIME_MODEL },
+      onAudio: vi.fn(),
+      onClearAudio: vi.fn(),
+      runAgentConsult: vi.fn(async () => ({ text: "Done" })),
+    });
+
+    await expect(bridge.connect()).rejects.toThrow(
+      "GPT-Live Talk requires an OpenAI Platform API key",
+    );
+    expect(FakeWebSocket.instances).toHaveLength(0);
+    expect(fetchWithSsrFGuardMock).not.toHaveBeenCalled();
+    expect(resolveProviderAuthProfileApiKeyMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ profileTypes: ["oauth"] }),
+    );
   });
 
   it.each([

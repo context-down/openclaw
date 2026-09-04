@@ -63,6 +63,17 @@ function isRelayAssistantEchoTranscript(session: RelaySession | undefined, text:
   return session?.harness.isLikelyAssistantEchoTranscript(text) ?? false;
 }
 
+function projectRelayProviderErrorMessage(
+  message: string,
+  configuredModel: string | undefined,
+  publicModel: string | undefined,
+): string {
+  if (!configuredModel || configuredModel === publicModel) {
+    return message;
+  }
+  return message.split(configuredModel).join("[REDACTED]");
+}
+
 /** Creates a realtime voice relay session and returns the browser audio contract. */
 export function createTalkRealtimeRelaySession(
   params: CreateTalkRealtimeRelaySessionParams,
@@ -538,7 +549,11 @@ export function createTalkRealtimeRelaySession(
         return;
       }
       const issue = realtimeRelayIssue({
-        message: formatErrorMessage(error),
+        message: projectRelayProviderErrorMessage(
+          formatErrorMessage(error),
+          params.model,
+          publicModel,
+        ),
         provider: params.provider.id,
         model: publicModel,
         phase: ready ? "stream" : "connect",
@@ -583,11 +598,21 @@ export function createTalkRealtimeRelaySession(
       bridge.close();
     } catch (error) {
       params.context.logGateway.warn(
-        `failed to close realtime relay bridge after provider terminated during creation: ${formatErrorMessage(error)}`,
+        `failed to close realtime relay bridge after provider terminated during creation: ${projectRelayProviderErrorMessage(
+          formatErrorMessage(error),
+          params.model,
+          publicModel,
+        )}`,
       );
     }
     if (earlyTerminal.kind === "error") {
-      throw earlyTerminal.error;
+      throw new Error(
+        projectRelayProviderErrorMessage(
+          formatErrorMessage(earlyTerminal.error),
+          params.model,
+          publicModel,
+        ),
+      );
     }
     throw new Error(`Realtime provider closed during session creation: ${earlyTerminal.reason}`);
   }
@@ -660,7 +685,11 @@ export function createTalkRealtimeRelaySession(
       return;
     }
     const issue = realtimeRelayIssue({
-      message: formatErrorMessage(error),
+      message: projectRelayProviderErrorMessage(
+        formatErrorMessage(error),
+        params.model,
+        publicModel,
+      ),
       provider: params.provider.id,
       model: publicModel,
       phase: "connect",

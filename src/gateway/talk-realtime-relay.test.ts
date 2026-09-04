@@ -2223,7 +2223,7 @@ describe("talk realtime gateway relay", () => {
       tools: [],
       model,
     });
-    bridgeRequest?.onError?.(new Error("provider rejected session"));
+    bridgeRequest?.onError?.(new Error(`provider rejected ${model}`));
 
     expect(session).not.toHaveProperty("model");
     expect(JSON.stringify(events)).not.toContain(model);
