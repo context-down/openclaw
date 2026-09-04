@@ -71,6 +71,10 @@ function runDoctor(params: {
         ...process.env,
         HOME: params.root,
         USERPROFILE: params.root,
+        // The child is a fresh top-level tsx process, not a vitest worker; the
+        // cli-process worker's IPC guard would serialize its cache-disabled
+        // compile past the spawn deadline on slower hosts.
+        ESBUILD_WORKER_THREADS: undefined,
         NODE_DISABLE_COMPILE_CACHE: "1",
         NODE_ENV: undefined,
         OPENCLAW_CONFIG_PATH: params.configPath,
