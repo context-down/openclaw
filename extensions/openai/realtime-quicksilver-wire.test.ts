@@ -248,7 +248,7 @@ describe("Realtime call creation", () => {
       status: 400,
       body: '{"error":{"code":"model_not_found","message":"The model does not exist or you do not have access"}}',
       message:
-        "OpenAI Platform API-key access to /v1/live is waitlist-gated. Use a ChatGPT OAuth profile or request access at https://openai.com/form/gpt-live-1-in-the-api/",
+        "OpenAI Platform API-key access is unavailable for the selected GPT-Live model. Verify the selected model and Platform account access.",
     },
     {
       name: "unsupported route model",

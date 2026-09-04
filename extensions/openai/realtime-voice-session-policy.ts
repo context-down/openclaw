@@ -31,7 +31,6 @@ import {
 } from "openclaw/plugin-sdk/string-coerce-runtime";
 import {
   readRealtimeErrorDetail,
-  resolveOpenAIChatGptSubscriptionAuth,
   resolveOpenAIProviderConfigRecord,
 } from "./realtime-provider-shared.js";
 
@@ -255,10 +254,9 @@ type OpenAIRealtimeApiKeyResolution =
 
 export const OPENAI_REALTIME_PLATFORM_AUTH_REQUIRED =
   "OpenAI Realtime voice requires an OpenAI Platform API key";
-const OPENAI_GPT_LIVE_AUTH_REQUIRED =
-  "GPT-Live Talk requires either an OpenAI Platform API key or a ChatGPT OAuth subscription profile";
+const OPENAI_GPT_LIVE_AUTH_REQUIRED = "GPT-Live Talk requires an OpenAI Platform API key";
 const OPENAI_GPT_LIVE_AUTHORED_PLATFORM_AUTH_UNAVAILABLE =
-  "GPT-Live Talk requires a working OpenAI Platform API key or ChatGPT OAuth subscription profile. The selected Platform API-key source could not be resolved, so OAuth fallback was not used; fix or remove it.";
+  "GPT-Live Talk requires a working OpenAI Platform API key. The selected Platform API-key source could not be resolved; fix or remove it.";
 export const OPENAI_REALTIME_API_KEY_REQUIRED = "OpenAI Realtime voice requires an API key";
 export const OPENAI_REALTIME_CONFIGURED_API_KEY_REJECTED =
   "OpenAI Realtime rejected the selected API key. Update or remove the active OpenAI API-key source";
@@ -539,14 +537,6 @@ export async function resolveOpenAIQuicksilverBridgeAuth(params: {
   cfg: RealtimeVoiceBridgeCreateRequest["cfg"] | undefined;
   agentId?: string;
 }) {
-  const subscriptionAuth = await resolveOpenAIChatGptSubscriptionAuth({
-    cfg: params.cfg,
-    agentDir:
-      params.cfg && params.agentId ? resolveAgentDir(params.cfg, params.agentId) : undefined,
-  });
-  if (subscriptionAuth) {
-    return subscriptionAuth;
-  }
   const platformAuth = await resolveOpenAIRealtimePlatformAuth(params);
   if (platformAuth.status === "available") {
     return { type: "api-key" as const, token: platformAuth.value };

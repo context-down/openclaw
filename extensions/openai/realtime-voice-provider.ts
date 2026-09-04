@@ -457,12 +457,11 @@ export function buildOpenAIRealtimeVoiceProvider(options?: {
       if (isOpenAIGptLiveModel(model)) {
         return (
           options?.quicksilverBrowserSessionBroker !== undefined &&
-          (hasOpenAIRealtimePlatformAuthInput({
+          hasOpenAIRealtimePlatformAuthInput({
             configuredApiKey: config.apiKey,
             cfg,
             agentId,
-          }) ||
-            hasOpenAIChatGptSubscriptionAuthInput({ cfg, agentId }))
+          })
         );
       }
       return (
@@ -509,13 +508,11 @@ export function buildOpenAIRealtimeVoiceProvider(options?: {
       if (config.azureEndpoint || config.azureDeployment) {
         return false;
       }
-      return (
-        hasOpenAIRealtimePlatformAuthInput({
-          configuredApiKey: config.apiKey,
-          cfg,
-          agentId,
-        }) || hasOpenAIChatGptSubscriptionAuthInput({ cfg, agentId })
-      );
+      return hasOpenAIRealtimePlatformAuthInput({
+        configuredApiKey: config.apiKey,
+        cfg,
+        agentId,
+      });
     },
     resolveGatewayRelayCapabilities: ({ providerConfig, model }) => {
       const config = normalizeProviderConfig(providerConfig);

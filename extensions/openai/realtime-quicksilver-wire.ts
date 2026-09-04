@@ -32,7 +32,6 @@ const OPENAI_REALTIME_ERROR_DETAIL_MAX_CHARS = 500;
 const OPENAI_REALTIME_SDP_ANSWER_MAX_BYTES = 256 * 1024;
 const OPENAI_REALTIME_LOCATION_MAX_BYTES = 512;
 const OPENAI_REALTIME_CALL_ID_RE = /^[A-Za-z0-9_-]{1,128}$/u;
-const OPENAI_GPT_LIVE_WAITLIST_URL = "https://openai.com/form/gpt-live-1-in-the-api/";
 
 export type OpenAIQuicksilverAuth =
   | { type: "api-key"; token: string }
@@ -403,7 +402,7 @@ function describeOpenAIQuicksilverCallError(
     (normalized.includes("model_not_found") ||
       normalized.includes("does not exist or you do not have access"))
   ) {
-    return `OpenAI Platform API-key access to /v1/live is waitlist-gated. Use a ChatGPT OAuth profile or request access at ${OPENAI_GPT_LIVE_WAITLIST_URL}`;
+    return "OpenAI Platform API-key access is unavailable for the selected GPT-Live model. Verify the selected model and Platform account access.";
   }
   if (
     status === 400 &&

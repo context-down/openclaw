@@ -1,4 +1,4 @@
-// GPT-Live uses browser or OAuth Gateway WebRTC, and Platform-key Frameless Bidi WebSocket.
+// GPT-Live uses Platform-key browser WebRTC or Frameless Bidi WebSocket transport.
 
 const OPENAI_GPT_LIVE_MODEL_PREFIX = "gpt-live";
 

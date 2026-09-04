@@ -348,27 +348,28 @@ describe("OpenAI realtime voice provider routing", () => {
       expectAgentDir: false,
     },
     {
-      $name: "gateway-relay | opaque model | ChatGPT OAuth | standard endpoint | ready",
+      $name: "gateway-relay | opaque model | ChatGPT OAuth | standard endpoint | not ready",
       surface: "gateway-relay" as const,
       providerConfig: { model: OPAQUE_REALTIME_MODEL },
       agentId: "main",
-      expected: true,
+      expected: false,
       expectAgentDir: false,
     },
     {
-      $name: "gateway-relay | opaque model | voice-agent ChatGPT OAuth | standard endpoint | ready",
+      $name:
+        "gateway-relay | opaque model | voice-agent ChatGPT OAuth | standard endpoint | not ready",
       surface: "gateway-relay" as const,
       providerConfig: { model: OPAQUE_REALTIME_MODEL },
       agentId: "voice-agent",
-      expected: true,
-      expectAgentDir: true,
+      expected: false,
+      expectAgentDir: false,
     },
     {
-      $name: "browser | opaque model | ChatGPT OAuth | standard endpoint | ready",
+      $name: "browser | opaque model | ChatGPT OAuth | standard endpoint | not ready",
       surface: "browser" as const,
       providerConfig: { model: OPAQUE_REALTIME_MODEL },
       agentId: "main",
-      expected: true,
+      expected: false,
       expectAgentDir: false,
     },
   ])("$name", ({ surface, providerConfig, agentId, expected, expectAgentDir }) => {
@@ -400,14 +401,7 @@ describe("OpenAI realtime voice provider routing", () => {
     }
   });
 
-  it("routes an explicit unlisted gpt-live alias through the broker", async () => {
-    const oauthToken = createTestJwt({
-      "https://api.openai.com/auth": { chatgpt_account_id: "account-123" },
-    });
-    resolveProviderAuthProfileApiKeyMock.mockImplementation(
-      async ({ profileTypes }: { profileTypes?: readonly string[] }) =>
-        profileTypes?.includes("oauth") ? oauthToken : undefined,
-    );
+  it("routes an explicit unlisted gpt-live alias through the broker with Platform auth", async () => {
     const { broker, createBrowserSession } = createQuicksilverBrowserBrokerFixture();
     const provider = buildOpenAIRealtimeVoiceProvider({
       quicksilverBrowserSessionBroker: broker,
@@ -415,7 +409,7 @@ describe("OpenAI realtime voice provider routing", () => {
     const cfg = { agents: { defaults: {} } } as never;
     const request = {
       cfg,
-      providerConfig: {},
+      providerConfig: { apiKey: "test-api-key-platform" },
       model: "gpt-live-1-mini",
       agentId: "main",
       workspaceDir: "/tmp/openclaw-agent-workspace",
@@ -425,17 +419,9 @@ describe("OpenAI realtime voice provider routing", () => {
 
     await provider.createBrowserSession?.(request);
     expect(createBrowserSession).toHaveBeenCalledWith(expect.objectContaining(request), {
-      type: "oauth",
-      token: oauthToken,
-      accountId: "account-123",
+      type: "api-key",
+      token: "test-api-key-platform",
     });
-    expect(resolveProviderAuthProfileApiKeyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        provider: "openai",
-        profileTypes: ["oauth"],
-        includeExternalCliAuth: false,
-      }),
-    );
   });
 
   it("rejects forced consult routing for prefix-routed gpt-live sessions", () => {
@@ -456,7 +442,7 @@ describe("OpenAI realtime voice provider routing", () => {
     ).toBeUndefined();
   });
 
-  it("prefers ChatGPT OAuth over Platform auth for gpt-live", async () => {
+  it("prefers Platform auth over ChatGPT OAuth for gpt-live", async () => {
     const oauthToken = createTestJwt({
       "https://api.openai.com/auth": { chatgpt_account_id: "account-123" },
     });
@@ -479,14 +465,16 @@ describe("OpenAI realtime voice provider routing", () => {
     } as never);
 
     expect(createBrowserSession).toHaveBeenCalledWith(expect.any(Object), {
-      type: "oauth",
-      token: oauthToken,
-      accountId: "account-123",
+      type: "api-key",
+      token: "test-api-key-platform",
     });
+    expect(resolveProviderAuthProfileApiKeyMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ profileTypes: ["oauth"] }),
+    );
   });
 
   it.each([
-    { name: "OAuth", hostClaim: true, broker: true, auth: "oauth", supported: true },
+    { name: "OAuth", hostClaim: true, broker: true, auth: "oauth", supported: false },
     { name: "Platform", hostClaim: true, broker: true, auth: "api_key", supported: true },
     { name: "older host", hostClaim: false, broker: true, auth: "oauth", supported: false },
     { name: "missing broker", hostClaim: true, broker: false, auth: "oauth", supported: false },
@@ -752,7 +740,15 @@ describe("OpenAI realtime voice provider routing", () => {
     },
   );
 
-  it("explains both gpt-live authentication options when neither is available", async () => {
+  it("rejects OAuth-only gpt-live before broker session creation", async () => {
+    resolveProviderAuthProfileApiKeyMock.mockImplementation(
+      async ({ profileTypes }: { profileTypes?: readonly string[] }) =>
+        profileTypes?.includes("oauth")
+          ? createTestJwt({
+              "https://api.openai.com/auth": { chatgpt_account_id: "account-123" },
+            })
+          : undefined,
+    );
     const { broker, createBrowserSession } = createQuicksilverBrowserBrokerFixture();
     const provider = buildOpenAIRealtimeVoiceProvider({
       quicksilverBrowserSessionBroker: broker,
@@ -763,9 +759,7 @@ describe("OpenAI realtime voice provider routing", () => {
         providerConfig: {},
         model: "gpt-live-1",
       }),
-    ).rejects.toThrow(
-      "GPT-Live Talk requires either an OpenAI Platform API key or a ChatGPT OAuth subscription profile",
-    );
+    ).rejects.toThrow("GPT-Live Talk requires an OpenAI Platform API key");
     expect(createBrowserSession).not.toHaveBeenCalled();
   });
 
