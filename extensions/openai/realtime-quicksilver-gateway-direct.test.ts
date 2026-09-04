@@ -127,7 +127,7 @@ describe("GPT-Live Gateway direct transport", () => {
     await vi.waitFor(() => expect(socket).toBeDefined());
     emitSideband(socket!, { type: "session.started", session: {} });
 
-    await expect(connection).rejects.toThrow("bridge closed");
+    await expect(connection).rejects.toThrow("OpenAI GPT-Live gateway relay failed");
     expect(bridge.isConnected()).toBe(false);
   });
 });

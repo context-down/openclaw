@@ -423,6 +423,11 @@ export class OpenAIQuicksilverVoiceBridge implements RealtimeVoiceBridge {
       settleReady();
       return;
     }
+    if (event.kind === "audio-cleared") {
+      this.config.onEvent?.({ direction: "server", type: "output_audio_buffer.cleared" });
+      this.config.onClearAudio("barge-in");
+      return;
+    }
     if (event.kind === "audio") {
       const canonical = canonicalizeBase64(event.data);
       if (!canonical) {

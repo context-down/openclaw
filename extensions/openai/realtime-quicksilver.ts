@@ -3,7 +3,7 @@
 const OPENAI_GPT_LIVE_MODEL_PREFIX = "gpt-live";
 
 // Realtime V3 currently accepts only this voice family across both transports.
-export const OPENAI_GPT_LIVE_VOICES = ["marin", "cedar"] as const;
+const OPENAI_GPT_LIVE_VOICES = ["marin", "cedar"] as const;
 export type OpenAIGptLiveVoice = (typeof OPENAI_GPT_LIVE_VOICES)[number];
 export const OPENAI_GPT_LIVE_DEFAULT_VOICE: OpenAIGptLiveVoice = "marin";
 

@@ -76,6 +76,7 @@ function projectWireEventType(event: OpenAIQuicksilverInboundEvent): string | un
     case "unknown":
       return undefined;
   }
+  return undefined;
 }
 
 /** Owns the provider's single active delegation and its once-consumed transcript context. */

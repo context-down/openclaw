@@ -5,7 +5,10 @@ import { emitSideband, FakeSocket } from "./realtime-quicksilver.test-helpers.js
 const OPAQUE_MODEL = "gpt-live-test-canary";
 const SENSITIVE_DETAILS = ["sensitive-route", "sensitive-session", "sensitive-transcript"];
 
-function createDirectBridge(params?: { socketFactory?: () => FakeSocket }) {
+function createDirectBridge(params?: {
+  socketFactory?: () => FakeSocket;
+  resolveAuth?: () => Promise<{ type: "api-key"; token: string }>;
+}) {
   let socket: FakeSocket | undefined;
   const logger = { debug: vi.fn(), warn: vi.fn() };
   const onClose = vi.fn();
@@ -21,10 +24,12 @@ function createDirectBridge(params?: { socketFactory?: () => FakeSocket }) {
     onError,
     runAgentConsult: vi.fn(async () => ({ text: "done" })),
     logger,
-    resolveAuth: vi.fn(async () => ({
-      type: "api-key" as const,
-      token: "platform-key",
-    })),
+    resolveAuth:
+      params?.resolveAuth ??
+      vi.fn(async () => ({
+        type: "api-key" as const,
+        token: "platform-key",
+      })),
     webSocketFactory: () => {
       socket = params?.socketFactory?.() ?? new FakeSocket();
       return socket;
@@ -55,6 +60,28 @@ function expectNoPrivateDetail(harness: ReturnType<typeof createDirectBridge>): 
 }
 
 describe("GPT-Live gateway relay error projection", () => {
+  it("projects arbitrary auth-store errors before provider I/O", async () => {
+    const socketFactory = vi.fn(() => new FakeSocket());
+    const authError = new Error(`Secret owner profile:private-account (${OPAQUE_MODEL})`);
+    authError.name = `Private${OPAQUE_MODEL}`;
+    const harness = createDirectBridge({
+      socketFactory,
+      resolveAuth: vi.fn(async () => {
+        throw authError;
+      }),
+    });
+
+    const error = await harness.bridge.connect().catch((cause: unknown) => cause);
+
+    expect(error).toMatchObject({
+      message: "OpenAI GPT-Live authentication failed",
+      name: "Error",
+    });
+    expect(socketFactory).not.toHaveBeenCalled();
+    expect(harness.onError).not.toHaveBeenCalled();
+    expectNoPrivateDetail(harness);
+  });
+
   it("redacts an opaque model from a startup socket failure", async () => {
     const harness = createDirectBridge({
       socketFactory: () => {

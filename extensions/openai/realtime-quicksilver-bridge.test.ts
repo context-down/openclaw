@@ -104,6 +104,7 @@ function createHarness(params?: {
     });
   }
   const onAudio = vi.fn();
+  const onClearAudio = vi.fn();
   const onTranscript = vi.fn();
   const onToolCall = vi.fn();
   const onReady = vi.fn();
@@ -123,7 +124,7 @@ function createHarness(params?: {
     resolveAuth: params?.resolveAuth ?? (async () => ({ type: "api-key", token: "test-key" })),
     ...(params?.useDefaultSocket ? {} : { webSocketFactory }),
     onAudio,
-    onClearAudio: vi.fn(),
+    onClearAudio,
     onTranscript,
     onToolCall,
     onReady,
@@ -137,6 +138,7 @@ function createHarness(params?: {
     connections,
     logger,
     onAudio,
+    onClearAudio,
     onClose,
     onError,
     onEvent,
@@ -411,6 +413,7 @@ describe("OpenAIQuicksilverVoiceBridge", () => {
       type: "output_audio.delta",
       audio: Buffer.from([1, 2, 3, 4]).toString("base64"),
     });
+    harness.socket.serverEvent({ type: "output_audio_buffer.cleared" });
     harness.socket.serverEvent({
       type: "input_transcript.added",
       item: { text: "hello" },
@@ -430,6 +433,11 @@ describe("OpenAIQuicksilverVoiceBridge", () => {
     });
 
     expect(harness.onAudio).toHaveBeenCalledWith(Buffer.from([1, 2, 3, 4]));
+    expect(harness.onEvent).toHaveBeenCalledWith({
+      direction: "server",
+      type: "output_audio_buffer.cleared",
+    });
+    expect(harness.onClearAudio).toHaveBeenCalledExactlyOnceWith("barge-in");
     expect(harness.onTranscript).toHaveBeenNthCalledWith(1, "user", "hello", false);
     expect(harness.onTranscript).toHaveBeenNthCalledWith(2, "user", "hello there", true);
     expect(harness.onToolCall).toHaveBeenCalledWith({

@@ -15,7 +15,10 @@ import type {
   OpenAIQuicksilverAudioPeerCallbacks,
   OpenAIQuicksilverAudioPeerContract,
 } from "./realtime-quicksilver-peer.runtime.js";
-import { projectOpenAIQuicksilverErrorMessage } from "./realtime-quicksilver-redaction.js";
+import {
+  projectOpenAIQuicksilverAuthErrorMessage,
+  projectOpenAIQuicksilverErrorMessage,
+} from "./realtime-quicksilver-redaction.js";
 import {
   releaseOpenAIQuicksilverSession,
   reserveOpenAIQuicksilverSession,
@@ -178,8 +181,14 @@ export class OpenAIQuicksilverGatewayBridge implements RealtimeVoiceBridge {
       this.abortController.signal,
       AbortSignal.timeout(this.config.connectTimeoutMs ?? QUICKSILVER_CONNECT_TIMEOUT_MS),
     ]);
+    let auth: OpenAIQuicksilverAuth;
     try {
-      const auth = await waitForConnectStep(this.config.resolveAuth(), connectSignal);
+      auth = await waitForConnectStep(this.config.resolveAuth(), connectSignal);
+    } catch (error) {
+      this.releaseResources("abort");
+      throw this.redactAdmissionError(error);
+    }
+    try {
       const requestIds = {
         realtimeSessionId: randomUUID(),
         sessionId: randomUUID(),
@@ -440,6 +449,14 @@ export class OpenAIQuicksilverGatewayBridge implements RealtimeVoiceBridge {
 
   private redactError(error: unknown): Error {
     const projected = new Error(projectOpenAIQuicksilverErrorMessage("gateway"));
+    if (error instanceof Error && error.name === "TimeoutError") {
+      projected.name = "TimeoutError";
+    }
+    return projected;
+  }
+
+  private redactAdmissionError(error: unknown): Error {
+    const projected = new Error(projectOpenAIQuicksilverAuthErrorMessage(error));
     if (error instanceof Error && error.name === "TimeoutError") {
       projected.name = "TimeoutError";
     }

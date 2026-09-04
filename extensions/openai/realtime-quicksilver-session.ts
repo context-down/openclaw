@@ -608,7 +608,12 @@ export function createOpenAIQuicksilverBrowserSessionBroker(params: {
       );
       return true;
     } catch (error) {
-      const publicSessionError = new Error(projectOpenAIQuicksilverErrorMessage("transport"));
+      const publicSessionError =
+        isOpenAIGptLiveModel(offer.request.model) || (offer.request.gaSideband && session)
+          ? new Error(projectOpenAIQuicksilverErrorMessage("transport"))
+          : error instanceof Error
+            ? error
+            : new Error("OpenAI realtime session failed");
       // Host notification failures cannot skip the allocated call's cleanup owner.
       // GPT-Live disposal already owns its terminal outcome.
       if (offer.request.gaSideband || !session) {
