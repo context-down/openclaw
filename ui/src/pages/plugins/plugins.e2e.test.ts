@@ -464,7 +464,8 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
       const marketplaceRow = page.locator(".plugin-catalog-result", { hasText: "Matrix" });
       await marketplaceRow.waitFor();
       expect(await marketplaceRow.textContent()).toContain("@openclaw");
-      expect(await marketplaceRow.textContent()).toContain("52.2k downloads");
+      expect(await marketplaceRow.textContent()).toContain("52.2k");
+      expect(await marketplaceRow.textContent()).not.toContain("downloads");
       const cards = page.locator(".installed-plugins-card");
       expect(await cards.count()).toBe(9);
       expect(
@@ -751,7 +752,8 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
       await matrixCatalog.waitFor();
       expect(await matrixCatalog.textContent()).not.toContain("Available");
       expect(await matrixCatalog.textContent()).not.toContain("channels");
-      expect(await matrixCatalog.getByText("52.2k downloads", { exact: true }).count()).toBe(1);
+      expect(await matrixCatalog.getByText("52.2k", { exact: true }).count()).toBe(1);
+      expect(await matrixCatalog.textContent()).not.toContain("downloads");
       expect(await matrixCatalog.locator(".plugin-download-count svg").count()).toBe(1);
       expect(
         await matrixCatalog

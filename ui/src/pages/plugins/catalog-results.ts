@@ -79,13 +79,21 @@ function formatCompactCount(value: number): string {
   return `${millions >= 100 ? Math.round(millions) : Number(millions.toFixed(1))}m`;
 }
 
-function renderDownloadCount(downloads: number | undefined): TemplateResult | typeof nothing {
-  return downloads === undefined
-    ? nothing
-    : html`<span class="plugin-download-count">
-        <span aria-hidden="true">${icons.download}</span>
-        ${t("pluginsPage.downloadCount", { count: formatCompactCount(downloads) })}
-      </span>`;
+function renderDownloadCount(
+  downloads: number | undefined,
+  options: { compact?: boolean } = {},
+): TemplateResult | typeof nothing {
+  if (downloads === undefined) {
+    return nothing;
+  }
+  const count = formatCompactCount(downloads);
+  return html`<span
+    class="plugin-download-count"
+    aria-label=${t("pluginsPage.downloadCount", { count })}
+  >
+    <span aria-hidden="true">${icons.download}</span>
+    ${options.compact ? count : t("pluginsPage.downloadCount", { count })}
+  </span>`;
 }
 
 function renderFeaturedCard(
@@ -264,7 +272,7 @@ function renderResultRow(
       </div>
       <p>${plugin.catalog.summary || t("pluginsPage.optionalCapability")}</p>
     </div>
-    ${renderDownloadCount(plugin.catalog.downloads)}
+    ${renderDownloadCount(plugin.catalog.downloads, { compact: true })}
   </article>`;
 }
 
