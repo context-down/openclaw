@@ -585,7 +585,10 @@ class PluginsPage extends OpenClawLightDomElement {
               })}${renderPluginCatalogResults({
                 connected: this.gateway.connected,
                 loading: this.discovery.loading,
-                loadingMore: this.discovery.loadingMore,
+                paging: this.discovery.paging,
+                pageNumber: this.discovery.pageNumber,
+                canGoPrevious: this.discovery.canGoPrevious,
+                canGoNext: this.discovery.canGoNext,
                 result: this.discovery.result,
                 error: this.discovery.error,
                 categories: this.discovery.categories,
@@ -605,8 +608,8 @@ class PluginsPage extends OpenClawLightDomElement {
                     pathname: pathForPluginCatalogEntry(id, this.context.basePath),
                   });
                 },
-                onLoadMoreTarget: (element) => this.discovery.observeLoadMore(element),
-                onLoadMore: () => void this.discovery.loadMore(),
+                onPreviousPage: () => void this.discovery.previousPage(),
+                onNextPage: () => void this.discovery.nextPage(),
                 onRetry: () => void this.discovery.refresh(),
                 onRetryCategories: () => void this.discovery.refreshCategories(),
                 onRetryFeatured: () => void this.discovery.refreshFeatured(),

@@ -16,20 +16,42 @@ export function renderPluginOfficialBadge(): TemplateResult {
   >`;
 }
 
-export function renderPluginAuthor(author: string | undefined): TemplateResult | typeof nothing {
-  return author ? html`<span class="plugin-card-author">@${author}</span>` : nothing;
+export function renderPluginAuthor(
+  author: string | undefined,
+  options: { linked?: boolean } = {},
+): TemplateResult | typeof nothing {
+  if (!author) {
+    return nothing;
+  }
+  const handle = author.replace(/^@+/, "");
+  const label = `@${handle}`;
+  return options.linked
+    ? html`<a
+        class="plugin-card-author plugin-card-author--linked"
+        href=${`https://clawhub.ai/user/${encodeURIComponent(handle)}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        >${label}</a
+      >`
+    : html`<span class="plugin-card-author">${label}</span>`;
 }
 
 export function renderPluginCardIdentity(params: {
   name: string;
   attribution: PluginCardAttribution;
+  linkedAuthor?: boolean;
+  showAuthor?: boolean;
+  subtitle?: string;
 }): TemplateResult {
   return html`<div class="installed-plugins-card__identity">
     <div class="plugin-card-title-row">
       <h3>${params.name}</h3>
       ${params.attribution.official ? renderPluginOfficialBadge() : nothing}
     </div>
-    ${renderPluginAuthor(params.attribution.author)}
+    ${params.subtitle ? renderPluginCardSummary(params.subtitle) : nothing}
+    ${params.showAuthor === false
+      ? nothing
+      : renderPluginAuthor(params.attribution.author, { linked: params.linkedAuthor })}
   </div>`;
 }
 

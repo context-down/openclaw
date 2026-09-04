@@ -1,5 +1,4 @@
 import { html, nothing, type TemplateResult } from "lit";
-import { ref } from "lit/directives/ref.js";
 import { repeat } from "lit/directives/repeat.js";
 import { icons } from "../../components/icons.ts";
 import { renderSettingsLoadingSkeleton, renderSettingsPage } from "../../components/settings-ui.ts";
@@ -23,7 +22,10 @@ export type PluginDiscoveryIntent = "all" | "trending" | "official";
 export type PluginCatalogResultsProps = {
   connected: boolean;
   loading: boolean;
-  loadingMore: boolean;
+  paging: boolean;
+  pageNumber: number;
+  canGoPrevious: boolean;
+  canGoNext: boolean;
   result: PluginDiscoveryResult | null;
   error: string | null;
   categories: readonly PluginDiscoveryCategory[];
@@ -39,8 +41,8 @@ export type PluginCatalogResultsProps = {
   onCategoryChange: (category: string | null) => void;
   onQueryChange: (query: string) => void;
   onOpenEntry: (id: string) => void;
-  onLoadMoreTarget: (element: Element | undefined) => void;
-  onLoadMore: () => void;
+  onPreviousPage: () => void;
+  onNextPage: () => void;
   onRetry: () => void;
   onRetryCategories: () => void;
   onRetryFeatured: () => void;
@@ -65,36 +67,47 @@ function categoryIcon(icon: string | undefined): TemplateResult {
   return (icon && CATEGORY_ICONS[icon]) || icons.box;
 }
 
-function formatCount(value: number | undefined): string | null {
-  return value === undefined ? null : new Intl.NumberFormat().format(value);
+function formatCompactCount(value: number): string {
+  if (value < 1_000) {
+    return new Intl.NumberFormat().format(value);
+  }
+  if (value < 1_000_000) {
+    const thousands = value / 1_000;
+    return `${thousands >= 100 ? Math.round(thousands) : Number(thousands.toFixed(1))}k`;
+  }
+  const millions = value / 1_000_000;
+  return `${millions >= 100 ? Math.round(millions) : Number(millions.toFixed(1))}m`;
 }
 
-function stateLabel(plugin: PluginDiscoveryEntry): string {
-  if (plugin.local.enabled) {
-    return t("pluginsPage.enabled");
-  }
-  if (plugin.local.installed) {
-    return t("pluginsPage.installedDisabled");
-  }
-  return t("pluginsPage.available");
+function renderDownloadCount(downloads: number | undefined): TemplateResult | typeof nothing {
+  return downloads === undefined
+    ? nothing
+    : html`<span class="plugin-download-count">
+        <span aria-hidden="true">${icons.download}</span>
+        ${t("pluginsPage.downloadCount", { count: formatCompactCount(downloads) })}
+      </span>`;
 }
 
 function renderFeaturedCard(
   plugin: PluginDiscoveryEntry,
   props: PluginCatalogResultsProps,
 ): TemplateResult {
-  return html`<a
+  return html`<article
     class="plugin-featured-card oc-card oc-card-interactive"
-    href=${props.entryHref(plugin.id)}
     data-plugin-id=${plugin.id}
-    @click=${(event: MouseEvent) => {
-      if (!shouldHandleNavigationClick(event)) {
-        return;
-      }
-      event.preventDefault();
-      props.onOpenEntry(plugin.id);
-    }}
   >
+    <a
+      class="plugin-featured-card__primary-link"
+      href=${props.entryHref(plugin.id)}
+      aria-label=${plugin.catalog.name}
+      @click=${(event: MouseEvent) => {
+        if (!shouldHandleNavigationClick(event)) {
+          return;
+        }
+        event.preventDefault();
+        props.onOpenEntry(plugin.id);
+      }}
+    ></a>
     <div class="installed-plugins-card__head">
       <span class="installed-plugins-card__art plugin-featured-card__art" aria-hidden="true">
         ${categoryIcon(plugin.catalog.icon)}
@@ -105,22 +118,12 @@ function renderFeaturedCard(
           ...(plugin.catalog.author ? { author: plugin.catalog.author } : {}),
           official: plugin.catalog.official,
         },
+        linkedAuthor: true,
       })}
     </div>
     ${renderPluginCardSummary(plugin.catalog.summary || t("pluginsPage.optionalCapability"))}
-    <div class="plugin-featured-card__footer">
-      <span class="plugin-featured-card__state" data-state=${plugin.local.state}
-        >${stateLabel(plugin)}</span
-      >
-      ${plugin.catalog.downloads === undefined
-        ? nothing
-        : html`<span class="plugin-featured-card__downloads">
-            ${t("pluginsPage.downloadCount", {
-              count: formatCount(plugin.catalog.downloads) ?? "0",
-            })}
-          </span>`}
-    </div>
-  </a>`;
+    <div class="plugin-featured-card__footer">${renderDownloadCount(plugin.catalog.downloads)}</div>
+  </article>`;
 }
 
 function renderFeatured(props: PluginCatalogResultsProps): TemplateResult {
@@ -129,7 +132,6 @@ function renderFeatured(props: PluginCatalogResultsProps): TemplateResult {
       <header class="plugin-catalog-results__header">
         <div>
           <h2 id="plugin-featured-title">${t("pluginsPage.featuredTitle")}</h2>
-          <p>${t("pluginsPage.featuredDescription")}</p>
         </div>
       </header>
       ${props.featuredLoading
@@ -198,7 +200,6 @@ function renderCategories(props: PluginCatalogResultsProps): TemplateResult {
       (item) => html`<button
         type="button"
         class="plugin-catalog-category ${props.category === item.slug ? "is-active" : ""}"
-        title=${item.description}
         aria-pressed=${props.category === item.slug}
         @click=${() => props.onCategoryChange(item.slug)}
       >
@@ -209,51 +210,62 @@ function renderCategories(props: PluginCatalogResultsProps): TemplateResult {
   </aside>`;
 }
 
+function renderCategorySelect(props: PluginCatalogResultsProps): TemplateResult | typeof nothing {
+  if (props.categoriesError) {
+    return nothing;
+  }
+  return html`<label class="plugin-catalog-category-select">
+    <span aria-hidden="true">${icons.layoutGrid}</span>
+    <select
+      class="oc-input"
+      aria-label=${t("pluginsPage.categoriesLabel")}
+      .value=${props.category ?? ""}
+      @change=${(event: Event) => {
+        if (event.currentTarget instanceof HTMLSelectElement) {
+          props.onCategoryChange(event.currentTarget.value || null);
+        }
+      }}
+    >
+      <option value="">${t("pluginsPage.allCategories")}</option>
+      ${repeat(
+        props.categories.toSorted((left, right) => left.order - right.order),
+        (item) => item.slug,
+        (item) => html`<option value=${item.slug}>${item.label}</option>`,
+      )}
+    </select>
+  </label>`;
+}
+
 function renderResultRow(
   plugin: PluginDiscoveryEntry,
   props: PluginCatalogResultsProps,
 ): TemplateResult {
-  const firstCategory = plugin.catalog.categories[0];
-  return html`<a
-    class="plugin-catalog-result"
-    href=${props.entryHref(plugin.id)}
-    data-plugin-id=${plugin.id}
-    @click=${(event: MouseEvent) => {
-      if (!shouldHandleNavigationClick(event)) {
-        return;
-      }
-      event.preventDefault();
-      props.onOpenEntry(plugin.id);
-    }}
-  >
+  return html`<article class="plugin-catalog-result" data-plugin-id=${plugin.id}>
+    <a
+      class="plugin-catalog-result__primary-link"
+      href=${props.entryHref(plugin.id)}
+      aria-label=${plugin.catalog.name}
+      @click=${(event: MouseEvent) => {
+        if (!shouldHandleNavigationClick(event)) {
+          return;
+        }
+        event.preventDefault();
+        props.onOpenEntry(plugin.id);
+      }}
+    ></a>
     <span class="plugin-catalog-result__icon" aria-hidden="true">
       ${categoryIcon(plugin.catalog.icon)}
     </span>
     <div class="plugin-catalog-result__identity">
       <div class="plugin-catalog-result__title-row">
         <h3>${plugin.catalog.name}</h3>
+        ${renderPluginAuthor(plugin.catalog.author, { linked: true })}
         ${plugin.catalog.official ? renderPluginOfficialBadge() : nothing}
-        ${firstCategory
-          ? html`<span class="plugin-catalog-result__category">${firstCategory}</span>`
-          : nothing}
       </div>
       <p>${plugin.catalog.summary || t("pluginsPage.optionalCapability")}</p>
-      <div class="plugin-catalog-result__meta">
-        ${renderPluginAuthor(plugin.catalog.author)}
-        ${plugin.catalog.downloads === undefined
-          ? nothing
-          : html`<span>
-              ${t("pluginsPage.downloadCount", {
-                count: formatCount(plugin.catalog.downloads) ?? "0",
-              })}
-            </span>`}
-      </div>
     </div>
-    <span class="plugin-catalog-result__state" data-state=${plugin.local.state}>
-      ${stateLabel(plugin)}
-    </span>
-    <span class="plugin-catalog-result__chevron" aria-hidden="true">${icons.chevronRight}</span>
-  </a>`;
+    ${renderDownloadCount(plugin.catalog.downloads)}
+  </article>`;
 }
 
 function intentLabel(intent: PluginDiscoveryIntent): string {
@@ -267,14 +279,13 @@ function intentLabel(intent: PluginDiscoveryIntent): string {
 }
 
 function renderExplorer(props: PluginCatalogResultsProps): TemplateResult {
-  const visibleItems = (props.result?.items ?? []).filter((plugin) => !plugin.local.enabled);
+  const visibleItems = props.result?.items ?? [];
   return renderSettingsPage(
     html`
       <section class="plugin-catalog-results" aria-labelledby="plugin-catalog-results-title">
         <header class="plugin-catalog-results__header">
           <div>
             <h2 id="plugin-catalog-results-title">${t("pluginsPage.exploreTitle")}</h2>
-            <p>${t("pluginsPage.exploreDescription")}</p>
           </div>
         </header>
         <div class="plugin-catalog-controls">
@@ -312,7 +323,7 @@ function renderExplorer(props: PluginCatalogResultsProps): TemplateResult {
           </label>
         </div>
         <div class="plugin-catalog-layout">
-          ${renderCategories(props)}
+          ${renderCategorySelect(props)} ${renderCategories(props)}
           <div class="plugin-catalog-layout__results">
             ${props.loading
               ? renderSettingsLoadingSkeleton({
@@ -339,27 +350,47 @@ function renderExplorer(props: PluginCatalogResultsProps): TemplateResult {
                     ? html`<p class="plugin-catalog-results__empty">
                         ${t("pluginsPage.noDiscoveryResults")}
                       </p>`
-                    : html`<div class="plugin-catalog-results__list">
-                        ${repeat(
-                          visibleItems,
-                          (plugin) => plugin.id,
-                          (plugin) => renderResultRow(plugin, props),
-                        )}
+                    : html`<div class="plugin-catalog-results__table">
+                        <div class="plugin-catalog-results__list-header" aria-hidden="true">
+                          <span></span>
+                          <span>${t("pluginsPage.catalogPluginColumn")}</span>
+                          <span>${t("pluginsPage.catalogDownloadsColumn")}</span>
+                        </div>
+                        <div class="plugin-catalog-results__list">
+                          ${repeat(
+                            visibleItems,
+                            (plugin) => plugin.id,
+                            (plugin) => renderResultRow(plugin, props),
+                          )}
+                        </div>
                       </div>`}
-            ${props.result?.nextCursor
-              ? html`<div
-                  class="plugin-catalog-results__more"
-                  ${ref((element) => props.onLoadMoreTarget(element))}
+            ${props.canGoPrevious || props.canGoNext
+              ? html`<nav
+                  class="plugin-catalog-pagination"
+                  aria-label=${t("pluginsPage.catalogPaginationLabel")}
                 >
+                  ${props.canGoPrevious
+                    ? html`<button
+                        type="button"
+                        class="btn btn--sm oc-action oc-action-ghost"
+                        ?disabled=${props.paging}
+                        @click=${props.onPreviousPage}
+                      >
+                        ${t("pluginsPage.previousPage")}
+                      </button>`
+                    : nothing}
+                  <span aria-live="polite">
+                    ${t("pluginsPage.pageNumber", { page: String(props.pageNumber) })}
+                  </span>
                   <button
                     type="button"
                     class="btn btn--sm oc-action oc-action-ghost"
-                    ?disabled=${props.loadingMore}
-                    @click=${props.onLoadMore}
+                    ?disabled=${props.paging || !props.canGoNext}
+                    @click=${props.onNextPage}
                   >
-                    ${props.loadingMore ? t("pluginsPage.loadingMore") : t("pluginsPage.loadMore")}
+                    ${t("pluginsPage.nextPage")}
                   </button>
-                </div>`
+                </nav>`
               : nothing}
           </div>
         </div>

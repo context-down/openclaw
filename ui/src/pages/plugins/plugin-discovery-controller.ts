@@ -12,6 +12,15 @@ import type {
 import type { PluginDiscoveryIntent } from "./catalog-results.ts";
 import type { PluginCardAttribution } from "./plugin-card.ts";
 
+const CATALOG_PAGE_SIZE = 25;
+
+type CatalogPageLoad = {
+  items: PluginDiscoveryEntry[];
+  overflow: PluginDiscoveryEntry[];
+  nextCursor?: string;
+  observed: PluginDiscoveryEntry[];
+};
+
 type PluginDiscoveryGateway = {
   getClient: () => GatewayBrowserClient | null;
   isConnected: () => boolean;
@@ -29,11 +38,15 @@ export class PluginDiscoveryController {
   intent: PluginDiscoveryIntent = "all";
   category: string | null = null;
   query = "";
-  loadingMore = false;
+  paging = false;
 
   private committedQuery = "";
   private searchTimer: ReturnType<typeof setTimeout> | null = null;
-  private observer: IntersectionObserver | null = null;
+  private pageIndex = 0;
+  private pages: PluginDiscoveryEntry[][] = [];
+  private overflow: PluginDiscoveryEntry[] = [];
+  private nextCursor: string | undefined;
+  private pageRequestEpoch = 0;
   private readonly entriesById = new Map<string, PluginDiscoveryEntry>();
   private readonly browseTask: Task;
   private readonly categoriesTask: Task;
@@ -44,6 +57,7 @@ export class PluginDiscoveryController {
     private readonly gateway: PluginDiscoveryGateway,
   ) {
     this.browseTask = new Task(host, {
+      // Scope changes call refresh(), which invalidates manual pagination before this task runs.
       autoRun: false,
       args: () =>
         [
@@ -54,20 +68,14 @@ export class PluginDiscoveryController {
         ] as const,
       task: ([client, intent, category, query], { signal }) =>
         client
-          ? client.request<PluginDiscoveryResult>(
-              "plugins.catalog.browse",
-              {
-                intent,
-                ...(category ? { category } : {}),
-                ...(query ? { query } : {}),
-                pageSize: 20,
-              },
-              { signal },
-            )
-          : initialState,
-      onComplete: (result) => {
-        this.result = result;
-        this.rememberEntries(result.items);
+          ? this.fetchAvailablePage({ client, intent, category, query, signal })
+          : initialState, // Lit returns to INITIAL without invoking onComplete.
+      onComplete: (page) => {
+        this.pages = [page.items];
+        this.overflow = page.overflow;
+        this.nextCursor = page.nextCursor;
+        this.result = { items: page.items };
+        this.rememberEntries(page.observed);
       },
       onError: (error) => {
         this.error = formatUiError(error);
@@ -98,12 +106,12 @@ export class PluginDiscoveryController {
         client
           ? client.request<PluginDiscoveryResult>(
               "plugins.catalog.browse",
-              { intent: "trending", pageSize: 6 },
+              { intent: "featured", pageSize: 9 },
               { signal },
             )
           : initialState,
       onComplete: (result) => {
-        this.featured = result.items.filter((plugin) => !plugin.local.enabled).slice(0, 3);
+        this.featured = result.items.filter((plugin) => !plugin.local.enabled).slice(0, 9);
         this.rememberEntries(result.items);
       },
       onError: (error) => {
@@ -118,6 +126,23 @@ export class PluginDiscoveryController {
 
   get featuredLoading(): boolean {
     return this.gateway.isConnected() && this.featuredTask.status === TaskStatus.PENDING;
+  }
+
+  get pageNumber(): number {
+    return this.pageIndex + 1;
+  }
+
+  get canGoPrevious(): boolean {
+    return !this.committedQuery && this.pageIndex > 0;
+  }
+
+  get canGoNext(): boolean {
+    return (
+      !this.committedQuery &&
+      (this.pageIndex + 1 < this.pages.length ||
+        this.overflow.length > 0 ||
+        Boolean(this.nextCursor))
+    );
   }
 
   get attributions(): ReadonlyMap<string, PluginCardAttribution> {
@@ -138,6 +163,46 @@ export class PluginDiscoveryController {
     for (const entry of entries) {
       this.entriesById.set(entry.id, entry);
     }
+  }
+
+  private async fetchAvailablePage(params: {
+    client: GatewayBrowserClient;
+    intent: PluginDiscoveryIntent;
+    category: string | null;
+    query: string;
+    overflow?: readonly PluginDiscoveryEntry[];
+    cursor?: string;
+    signal?: AbortSignal;
+  }): Promise<CatalogPageLoad> {
+    const available = [...(params.overflow ?? [])];
+    const observed: PluginDiscoveryEntry[] = [];
+    let cursor = params.cursor;
+    let shouldFetch = true;
+
+    while (available.length < CATALOG_PAGE_SIZE && shouldFetch) {
+      const page = await params.client.request<PluginDiscoveryResult>(
+        "plugins.catalog.browse",
+        {
+          intent: params.intent,
+          ...(params.category ? { category: params.category } : {}),
+          ...(params.query ? { query: params.query } : {}),
+          ...(cursor ? { cursor } : {}),
+          pageSize: CATALOG_PAGE_SIZE,
+        },
+        params.signal ? { signal: params.signal } : undefined,
+      );
+      observed.push(...page.items);
+      available.push(...page.items.filter((plugin) => !plugin.local.installed));
+      cursor = page.nextCursor;
+      shouldFetch = !params.query && Boolean(cursor);
+    }
+
+    return {
+      items: available.slice(0, CATALOG_PAGE_SIZE),
+      overflow: available.slice(CATALOG_PAGE_SIZE),
+      ...(cursor ? { nextCursor: cursor } : {}),
+      observed,
+    };
   }
 
   ensureInitial(): void {
@@ -174,7 +239,7 @@ export class PluginDiscoveryController {
     this.featured = [];
     this.featuredError = null;
     this.entriesById.clear();
-    this.loadingMore = false;
+    this.resetPagination();
   }
 
   disconnect(): void {
@@ -182,8 +247,6 @@ export class PluginDiscoveryController {
       clearTimeout(this.searchTimer);
       this.searchTimer = null;
     }
-    this.observer?.disconnect();
-    this.observer = null;
   }
 
   async refresh(): Promise<void> {
@@ -192,7 +255,7 @@ export class PluginDiscoveryController {
       return;
     }
     this.error = null;
-    this.loadingMore = false;
+    this.resetPagination();
     await this.browseTask.run([client, this.intent, this.category, this.committedQuery]);
   }
 
@@ -237,55 +300,81 @@ export class PluginDiscoveryController {
     }, 250);
   }
 
-  observeLoadMore(element: Element | undefined): void {
-    this.observer?.disconnect();
-    this.observer = null;
-    if (!element || typeof IntersectionObserver === "undefined") {
+  async previousPage(): Promise<void> {
+    if (!this.canGoPrevious || this.paging) {
       return;
     }
-    this.observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          void this.loadMore();
-        }
-      },
-      { rootMargin: "240px 0px" },
-    );
-    this.observer.observe(element);
+    this.showPage(this.pageIndex - 1);
   }
 
-  async loadMore(): Promise<void> {
-    const cursor = this.result?.nextCursor;
-    const scope = this.gateway.capture();
-    if (!cursor || !scope || this.loadingMore || this.committedQuery) {
+  async nextPage(): Promise<void> {
+    if (!this.canGoNext || this.paging) {
       return;
     }
-    this.loadingMore = true;
+    const targetIndex = this.pageIndex + 1;
+    if (targetIndex < this.pages.length) {
+      this.showPage(targetIndex);
+      return;
+    }
+    await this.loadNextPage(targetIndex);
+  }
+
+  private resetPagination(): void {
+    this.pageRequestEpoch += 1;
+    this.pageIndex = 0;
+    this.pages = [];
+    this.overflow = [];
+    this.nextCursor = undefined;
+    this.paging = false;
+  }
+
+  private showPage(targetIndex: number): void {
+    const items = this.pages[targetIndex];
+    if (!items) {
+      return;
+    }
+    this.pageIndex = targetIndex;
+    this.result = { items };
+    this.host.requestUpdate();
+  }
+
+  private async loadNextPage(targetIndex: number): Promise<void> {
+    const scope = this.gateway.capture();
+    if (!scope || this.committedQuery) {
+      return;
+    }
+    const requestEpoch = ++this.pageRequestEpoch;
+    this.paging = true;
     this.error = null;
     this.host.requestUpdate();
     try {
-      const next = await scope.client.request<PluginDiscoveryResult>("plugins.catalog.browse", {
+      const page = await this.fetchAvailablePage({
+        client: scope.client,
         intent: this.intent,
-        ...(this.category ? { category: this.category } : {}),
-        cursor,
-        pageSize: 20,
+        category: this.category,
+        query: "",
+        overflow: this.overflow,
+        cursor: this.nextCursor,
       });
-      if (!this.gateway.isCurrent(scope) || cursor !== this.result?.nextCursor) {
+      if (!this.gateway.isCurrent(scope) || requestEpoch !== this.pageRequestEpoch) {
         return;
       }
-      const seen = new Set(this.result.items.map((plugin) => plugin.id));
-      this.result = {
-        items: [...this.result.items, ...next.items.filter((plugin) => !seen.has(plugin.id))],
-        ...(next.nextCursor ? { nextCursor: next.nextCursor } : {}),
-      };
-      this.rememberEntries(next.items);
+      this.overflow = page.overflow;
+      this.nextCursor = page.nextCursor;
+      this.rememberEntries(page.observed);
+      if (page.items.length === 0) {
+        return;
+      }
+      this.pageIndex = targetIndex;
+      this.pages.push(page.items);
+      this.result = { items: page.items };
     } catch (error) {
-      if (this.gateway.isCurrent(scope)) {
+      if (this.gateway.isCurrent(scope) && requestEpoch === this.pageRequestEpoch) {
         this.error = formatUiError(error);
       }
     } finally {
-      if (this.gateway.isCurrent(scope)) {
-        this.loadingMore = false;
+      if (this.gateway.isCurrent(scope) && requestEpoch === this.pageRequestEpoch) {
+        this.paging = false;
         this.host.requestUpdate();
       }
     }

@@ -20,55 +20,18 @@ import {
   renderPluginConsentDialog,
   type PluginConsentState,
 } from "./consent-dialog.ts";
-import {
-  renderPluginCardIdentity,
-  renderPluginCardSummary,
-  type PluginCardAttribution,
-} from "./plugin-card.ts";
-const INSTALLED_PLUGINS_INITIAL_LIMIT = 12;
+import { renderPluginCardIdentity, type PluginCardAttribution } from "./plugin-card.ts";
+const INSTALLED_PLUGINS_INITIAL_LIMIT = 9;
 
-function existingCatalogOrder(left: PluginCatalogItem, right: PluginCatalogItem): number {
-  const featured = Number(Boolean(right.featured)) - Number(Boolean(left.featured));
-  if (featured !== 0) {
-    return featured;
-  }
-  if (left.featured && right.featured) {
-    if (left.featuredAt === undefined && right.featuredAt !== undefined) {
-      return 1;
-    }
-    if (left.featuredAt !== undefined && right.featuredAt === undefined) {
-      return -1;
-    }
-    if (left.featuredAt !== undefined && right.featuredAt !== undefined) {
-      const featuredAt = right.featuredAt - left.featuredAt;
-      if (featuredAt !== 0) {
-        return featuredAt;
-      }
-    }
-  }
-  return (
-    (left.order ?? Number.MAX_SAFE_INTEGER) - (right.order ?? Number.MAX_SAFE_INTEGER) ||
-    left.name.localeCompare(right.name)
-  );
-}
-
-function runtimePriority(plugin: PluginCatalogItem): number {
-  if (plugin.enabled) {
-    return 0;
-  }
-  if (plugin.state === "needs-setup") {
-    return 1;
-  }
-  return plugin.state === "error" ? 2 : 3;
-}
-
-/** Actionable state owns inventory order; catalog metadata keeps ties deterministic. */
+/** Enabled plugins form the first alphabetical group; all disabled states follow. */
 function prioritizeInstalledPlugins(plugins: readonly PluginCatalogItem[]): PluginCatalogItem[] {
   return plugins
     .filter((plugin) => plugin.installed)
     .toSorted(
       (left, right) =>
-        runtimePriority(left) - runtimePriority(right) || existingCatalogOrder(left, right),
+        Number(right.enabled) - Number(left.enabled) ||
+        left.name.localeCompare(right.name) ||
+        left.id.localeCompare(right.id),
     );
 }
 
@@ -141,9 +104,13 @@ function renderCard(plugin: PluginCatalogItem, props: InstalledPluginsProps): Te
           () => props.onIconError(plugin.id),
           "installed-plugins-card__art",
         )}
-        ${renderPluginCardIdentity({ name: plugin.name, attribution })}
+        ${renderPluginCardIdentity({
+          name: plugin.name,
+          attribution,
+          showAuthor: false,
+          subtitle: plugin.description || t("pluginsPage.optionalCapability"),
+        })}
       </div>
-      ${renderPluginCardSummary(plugin.description || t("pluginsPage.optionalCapability"))}
       ${plugin.error
         ? html`<p class="installed-plugins-card__error" role="alert">
             ${formatUiExternalText(plugin.error)}
