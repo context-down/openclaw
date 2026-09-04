@@ -319,7 +319,7 @@ export const PluginDiscoveryCategorySchema = closedObject({
 export const PluginDiscoveryCatalogFactsSchema = closedObject({
   name: NonEmptyString,
   summary: Type.Optional(Type.String()),
-  family: Type.Union([Type.Literal("code-plugin"), Type.Literal("bundle-plugin")]),
+  family: Type.Optional(Type.Union([Type.Literal("code-plugin"), Type.Literal("bundle-plugin")])),
   author: Type.Optional(NonEmptyString),
   official: Type.Boolean(),
   categories: Type.Array(NonEmptyString),
@@ -328,6 +328,7 @@ export const PluginDiscoveryCatalogFactsSchema = closedObject({
   downloads: Type.Optional(Type.Number({ minimum: 0 })),
   installs: Type.Optional(Type.Number({ minimum: 0 })),
   verificationTier: Type.Optional(NonEmptyString),
+  publishedToClawHub: Type.Optional(Type.Boolean()),
 });
 
 export const PluginDiscoveryLocalFactsSchema = closedObject({
@@ -368,6 +369,7 @@ export const PluginsCatalogBrowseParamsSchema = closedObject({
 export const PluginsCatalogBrowseResultSchema = closedObject({
   items: Type.Array(PluginDiscoveryEntrySchema),
   nextCursor: Type.Optional(Type.String({ minLength: 1, maxLength: 4096 })),
+  remoteError: Type.Optional(Type.String()),
 });
 
 export const PluginsCatalogCategoriesParamsSchema = closedObject({});
