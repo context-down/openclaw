@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 350369,
-  "reason": "The CI-shaped ui:check-performance:base comparison measures exactly 350369 B after pinning one candidate/base build identity and disabling Git discovery; raised from 349565 B by the measured 804 B only, with the fixed 358400 B cap and existing allowances retained",
+  "startupJsGzipBytes": 346197,
+  "reason": "The merged 8f0facca5e0b main and PR source measure exactly 346197 B under one canonical candidate/base build identity with Git discovery disabled; lowered from main's 350377 B by the measured 4180 B, with the fixed 358400 B cap and existing allowances retained",
   "updatedAt": "2026-09-04"
 }
