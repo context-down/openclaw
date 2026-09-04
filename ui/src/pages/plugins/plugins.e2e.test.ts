@@ -24,6 +24,7 @@ import {
   discoveryResult,
   finalDiscoveryPageItems,
   featuredResult,
+  localOnlyDiscoveryPlugin,
   matrixDiscoveryPlugin,
   secondDiscoveryPageItems,
 } from "../../test-helpers/plugins-e2e-fixtures.test-support.ts";
@@ -335,6 +336,19 @@ const matrixDetail = {
   },
 } satisfies PluginDiscoveryDetailResult;
 
+const localOnlyDetail = {
+  plugin: localOnlyDiscoveryPlugin,
+  detail: {
+    origin: "local",
+    packageName: "@openclaw/local-calendar",
+    topics: [],
+    configuration: [],
+    mcpServers: [],
+    skills: [{ name: "Calendar planning" }],
+    versions: [],
+  },
+} satisfies PluginDiscoveryDetailResult;
+
 let browser: Browser;
 let server: ControlUiE2eServer;
 
@@ -455,7 +469,10 @@ function pluginMethodResponses() {
     },
     "plugins.catalog.categories": discoveryCategories,
     "plugins.catalog.get": {
-      cases: [{ match: { id: matrixDiscoveryPlugin.id }, response: matrixDetail }],
+      cases: [
+        { match: { id: matrixDiscoveryPlugin.id }, response: matrixDetail },
+        { match: { id: localOnlyDiscoveryPlugin.id }, response: localOnlyDetail },
+      ],
     },
     "plugins.install": {
       cases: [
@@ -774,6 +791,78 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
       await detailTabs.getByRole("tab", { name: "Versions" }).click();
       expect(await page.getByText("2.1.0", { exact: true }).count()).toBe(1);
       expect(await page.getByText("Current release", { exact: true }).count()).toBe(1);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("renders local-only discovery without inventing ClawHub popularity or provenance", async () => {
+    const context = await newContext();
+    const page = await context.newPage();
+    const gateway = await installMockGateway(page, {
+      featureMethods: pluginMethods,
+      methodResponses: pluginMethodResponses(),
+    });
+
+    try {
+      await page.goto(`${server.baseUrl}plugins`);
+      const row = page.locator(`[data-plugin-id="${localOnlyDiscoveryPlugin.id}"]`);
+      await row.waitFor();
+      expect(await row.getByText("Local Calendar", { exact: true }).count()).toBe(1);
+      expect(await row.getByText(/downloads/u).count()).toBe(0);
+      expect(
+        await row
+          .getByText(
+            "This plugin has not been published to ClawHub and does not have download metrics.",
+            { exact: true },
+          )
+          .count(),
+      ).toBe(1);
+
+      await row.getByRole("link", { name: "Local Calendar", exact: true }).click();
+      await page.getByRole("heading", { level: 1, name: "Local Calendar", exact: true }).waitFor();
+      expect(
+        (await gateway.getRequests("plugins.catalog.get")).map((request) => request.params),
+      ).toContainEqual({ id: localOnlyDiscoveryPlugin.id });
+      expect(await page.getByText("@openclaw", { exact: true }).count()).toBe(0);
+      expect(await page.getByText("Security", { exact: true }).count()).toBe(0);
+      await page
+        .getByRole("tablist", { name: "Plugin details" })
+        .getByRole("tab", { name: "Skills" })
+        .click();
+      expect(await page.getByText("Calendar planning", { exact: true }).count()).toBe(1);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("keeps local-only rows visible beside an isolated ClawHub outage", async () => {
+    const context = await newContext();
+    const page = await context.newPage();
+    await installMockGateway(page, {
+      featureMethods: pluginMethods,
+      methodResponses: {
+        ...pluginMethodResponses(),
+        "plugins.catalog.browse": {
+          items: [localOnlyDiscoveryPlugin],
+          remoteError:
+            "ClawHub is unavailable: service unavailable. Local plugins remain available.",
+        },
+      },
+    });
+
+    try {
+      await page.goto(`${server.baseUrl}plugins`);
+      const explore = page.getByRole("region", { name: "Explore plugins" });
+      await explore.getByText("Local Calendar", { exact: true }).waitFor();
+      expect(
+        await page
+          .getByText(
+            "ClawHub is unavailable: service unavailable. Local plugins remain available.",
+            { exact: true },
+          )
+          .count(),
+      ).toBe(1);
     } finally {
       await context.close();
     }
