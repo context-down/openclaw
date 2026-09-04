@@ -437,6 +437,13 @@ export async function finishGatewayStartup(params: {
     getChannelAutostartSuppression: channelManager.getAutostartSuppression,
     stopPostReadySidecars: stopRegisteredPostReadySidecars,
     reloadPlugins: kernel.reloadPlugins,
+    reloadPluginServices: async (config, serviceIds) => {
+      const services = runtimeState.pluginServices;
+      if (!services) {
+        throw new Error("Plugin services are not attached");
+      }
+      await services.reload(config, serviceIds);
+    },
     logHooks,
     logChannels,
     logCron,
@@ -467,6 +474,7 @@ export async function finishGatewayStartup(params: {
       ]);
     },
     commitRuntimePolicy: (nextConfig) => {
+      runtime.configureDiagnostics(nextConfig);
       const rateLimit = nextConfig.gateway?.auth?.rateLimit;
       authRateLimiter.updateConfig(rateLimit);
       browserAuthRateLimiter.updateConfig({ ...rateLimit, exemptLoopback: false });

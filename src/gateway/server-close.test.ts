@@ -832,6 +832,7 @@ describe("createGatewayCloseHandler", () => {
       await exits[1];
     });
     const pluginServices = {
+      reload: vi.fn(async () => {}),
       stop: vi.fn(() => new Promise<void>(() => {})),
     };
     const stopChannel = vi.fn(async () => undefined);
