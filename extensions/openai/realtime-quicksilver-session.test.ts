@@ -271,9 +271,12 @@ describe("GPT-Live offer broker", () => {
       expect(response.res.statusCode).toBe(502);
       expect(response.readBody()).toContain("OpenAI GPT-Live transport failed");
       expect(response.readBody()).not.toContain(privateValue);
-      const callbackMessage = (onError.mock.calls[0]?.[0] as Error | undefined)?.message;
-      expect(callbackMessage).toBe("OpenAI GPT-Live transport failed");
-      expect(callbackMessage).not.toContain(privateValue);
+      expect(onError).toHaveBeenCalledOnce();
+      const callbackError = onError.mock.calls[0]?.[0] as Error | undefined;
+      expect(callbackError).toBeInstanceOf(Error);
+      expect(callbackError?.name).toBe("Error");
+      expect(callbackError?.message).toBe("OpenAI GPT-Live transport failed");
+      expect(callbackError?.cause).toBeUndefined();
       expect(bridge.close).toHaveBeenCalledOnce();
       expect(
         fetchMock.mock.calls.filter(([url]) =>

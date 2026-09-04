@@ -632,10 +632,15 @@ describe("GPT-Live sideband protocol", () => {
     });
 
     expect(logger.warn).toHaveBeenCalledWith("OpenAI GPT-Live provider error");
-    expect(onFatalError).toHaveBeenCalledWith(
-      expect.objectContaining({ message: "OpenAI GPT-Live provider error" }),
-    );
-    const projected = JSON.stringify([logger.warn.mock.calls, onFatalError.mock.calls]);
+    expect(onFatalError).toHaveBeenCalledOnce();
+    const projectedError = onFatalError.mock.calls[0]?.[0];
+    expect(projectedError).toBeInstanceOf(Error);
+    expect(projectedError?.name).toBe("Error");
+    expect(projectedError?.message).toBe("OpenAI GPT-Live provider error");
+    expect(projectedError?.cause).toBeUndefined();
+    const projected = JSON.stringify({
+      logs: logger.warn.mock.calls,
+    });
     for (const privateValue of [model, ...sensitiveDetails]) {
       expect(projected).not.toContain(privateValue);
     }

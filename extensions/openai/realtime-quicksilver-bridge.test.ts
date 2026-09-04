@@ -461,8 +461,15 @@ describe("OpenAIQuicksilverVoiceBridge", () => {
       },
     });
 
-    expect(harness.onError).toHaveBeenCalledWith(new Error("OpenAI GPT-Live transport failed"));
-    const projected = JSON.stringify([harness.onError.mock.calls, harness.onEvent.mock.calls]);
+    expect(harness.onError).toHaveBeenCalledOnce();
+    const projectedError = harness.onError.mock.calls[0]?.[0];
+    expect(projectedError).toBeInstanceOf(Error);
+    expect(projectedError?.name).toBe("Error");
+    expect(projectedError?.message).toBe("OpenAI GPT-Live transport failed");
+    expect(projectedError?.cause).toBeUndefined();
+    const projected = JSON.stringify({
+      events: harness.onEvent.mock.calls,
+    });
     for (const privateValue of [model, ...sensitiveDetails]) {
       expect(projected).not.toContain(privateValue);
     }
