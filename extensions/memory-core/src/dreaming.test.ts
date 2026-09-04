@@ -49,12 +49,12 @@ const constants = {
 };
 const { createTempWorkspace } = createMemoryCoreTestHarness();
 
-const registeredGatewayStops = new Set<() => Promise<void>>();
+const registeredGatewayStops = new Set<ReturnType<typeof getGatewayStopHandler>>();
 
 afterEach(async () => {
   const stops = [...registeredGatewayStops];
   registeredGatewayStops.clear();
-  await Promise.all(stops.map((stop) => stop()));
+  await Promise.all(stops.map(async (stop) => await stop({ reason: "test" }, {})));
   resetSystemEventsForTest();
 });
 
@@ -387,7 +387,8 @@ async function triggerGatewayStop(
 
 function registerShortTermPromotionDreamingForTest(api: DreamingPluginApiTestDouble): void {
   registerShortTermPromotionDreaming(api as unknown as DreamingPluginApi);
-  registeredGatewayStops.add(() => triggerGatewayStop(api.on));
+  // Cleanup outlives beforeAll mock call history, which Vitest clears before each test.
+  registeredGatewayStops.add(getGatewayStopHandler(api.on));
 }
 
 describe("short-term dreaming config", () => {
