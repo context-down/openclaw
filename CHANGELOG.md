@@ -35,6 +35,7 @@ Docs: https://docs.openclaw.ai
 
 ### Fixes
 
+- **Release package validation:** compare package tarballs against npm's authoritative dry-run inventory, rejecting npm-excluded cargo while accepting required files and bundled dependency closure.
 - **Update readiness:** select declared health-check owners before loading plugin APIs, preventing unrelated optional Doctor checks from interrupting upgrades while retaining mandatory readiness failures.
 
 - **Apple chat:** make queued messages immediately retryable after session-settings failures, while keeping retries bound to the exact failed attempt.
