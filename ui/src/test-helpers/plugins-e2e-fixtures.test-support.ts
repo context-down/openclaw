@@ -79,6 +79,7 @@ export const localOnlyDiscoveryPlugin = {
     enabled: false,
     state: "not-installed",
     pluginId: "local-calendar",
+    install: { source: "official", pluginId: "local-calendar" },
     action: "install",
   },
 } satisfies PluginDiscoveryEntry;
