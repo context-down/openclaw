@@ -414,7 +414,7 @@ export function createGatewayReloadHandlers(params: GatewayReloadHandlerParams) 
             }
             params.logChannels.info(`stopping ${channel} channel before plugin reload`);
             channelsStoppedBeforePluginReload.add(channel);
-            await params.stopChannel(channel, undefined, { manual: false });
+            await params.stopChannel(channel, undefined, { manual: false, routeHandoff: true });
             pluginReloadAborted = isPluginReloadAborted();
           },
           onFailure: (channel, err) => {
@@ -510,6 +510,9 @@ export function createGatewayReloadHandlers(params: GatewayReloadHandlerParams) 
         (!runtimeCommitted || isRestartRetryStopped() || isLifecycleReloadAborted());
     }
     if (pluginReloadAborted) {
+      for (const channel of channelsStoppedBeforePluginReload) {
+        params.releaseChannelRouteHandoffs(channel);
+      }
       // Only an uncommitted reload can transfer its receipt to the watcher. After
       // commit, same-content replay may be a no-op and cannot finish the interrupted tail.
       const error = createReloadCancellationError(

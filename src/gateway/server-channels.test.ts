@@ -1879,6 +1879,234 @@ describe("server-channels auto restart", () => {
     expect(account?.lastError).toContain("channel stop timed out");
   });
 
+  it("keeps stopped webhook routes retryable until replacement ingress is ready", async () => {
+    const route = { path: "/plugins/reload", auth: "plugin" as const, pluginId: "discord" };
+    const replacement = createDeferred();
+    let starts = 0;
+    const registry = installTestRegistry(
+      createTestPlugin({
+        startAccount: async ({ abortSignal }) => {
+          const generation = ++starts;
+          if (generation > 1) {
+            await replacement.promise;
+          }
+          if (abortSignal.aborted) {
+            return;
+          }
+          const unregister = registerPluginHttpRoute({
+            ...route,
+            throwOnFailure: true,
+            handler: (_req, res) => {
+              res.end(String(generation));
+              return true;
+            },
+          });
+          await new Promise<void>((resolve) => {
+            abortSignal.addEventListener("abort", () => resolve(), { once: true });
+          });
+          unregister();
+        },
+      }),
+    );
+    const manager = createManager({ getPluginHttpRouteRegistry: () => registry });
+    const server = createTestGatewayServer({
+      resolvedAuth: AUTH_NONE,
+      overrides: {
+        handlePluginRequest: createGatewayPluginRequestHandler({
+          registry,
+          log: createSubsystemLogger("gateway/webhook-reload-test"),
+        }),
+      },
+    });
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("expected a TCP listener");
+    }
+    const read = async () => {
+      const response = await fetch(`http://127.0.0.1:${address.port}${route.path}`);
+      return {
+        status: response.status,
+        retryAfter: response.headers.get("retry-after"),
+        body: await response.text(),
+      };
+    };
+    try {
+      await manager.startChannels();
+      expect(await read()).toMatchObject({ status: 200, body: "1" });
+      await manager.stopChannel("discord", undefined, { manual: false, routeHandoff: true });
+      expect(await read()).toMatchObject({ status: 503, retryAfter: "1" });
+      await manager.startChannels();
+      expect(await read()).toMatchObject({ status: 503, retryAfter: "1" });
+      const repeatedStop = manager.stopChannel("discord", undefined, {
+        manual: false,
+        routeHandoff: true,
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+      await repeatedStop;
+      expect(await read()).toMatchObject({ status: 503, retryAfter: "1" });
+      // Timed-out preparation is retired by the existing two-attempt recovery owner.
+      await manager.startChannel("discord", DEFAULT_ACCOUNT_ID);
+      await manager.startChannel("discord", DEFAULT_ACCOUNT_ID);
+      expect(await read()).toMatchObject({ status: 503, retryAfter: "1" });
+      replacement.resolve();
+      await flushMicrotasks();
+      expect(await read()).toMatchObject({ status: 200, body: "3" });
+      await manager.stopChannel("discord");
+      expect(await read()).toMatchObject({ status: 404 });
+      await manager.startChannels();
+      expect(await read()).toMatchObject({ status: 200, body: "4" });
+      await manager.stopChannel("discord", undefined, { manual: false, routeHandoff: true });
+      expect(await read()).toMatchObject({ status: 503, retryAfter: "1" });
+      manager.pruneInactiveChannelAccountState(new Set());
+      expect(await read()).toMatchObject({ status: 404 });
+    } finally {
+      replacement.resolve();
+      await manager.stopChannel("discord");
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
+  it("rejects late startup registration while the next ingress handoff remains parked", async () => {
+    const pending = createDeferred();
+    const lateAttempt = createDeferred<string>();
+    let starts = 0;
+    const registry = installTestRegistry(
+      createTestPlugin({
+        startAccount: async ({ abortSignal }) => {
+          const generation = ++starts;
+          if (generation === 2) {
+            await pending.promise;
+          }
+          try {
+            registerPluginHttpRoute({
+              path: "/plugins/late-reload",
+              auth: "plugin",
+              pluginId: "discord",
+              handler: vi.fn(),
+              throwOnFailure: true,
+            });
+            if (generation === 2) {
+              lateAttempt.resolve("registered after retirement");
+              return;
+            }
+            await new Promise<void>((resolve) => {
+              abortSignal.addEventListener("abort", () => resolve(), { once: true });
+            });
+          } catch (error) {
+            lateAttempt.resolve(String(error));
+          }
+        },
+      }),
+    );
+    const manager = createManager({ getPluginHttpRouteRegistry: () => registry });
+    await manager.startChannels();
+    await manager.stopChannel("discord", undefined, { manual: false, routeHandoff: true });
+    await manager.startChannels();
+    const stop = manager.stopChannel("discord", undefined, { manual: false, routeHandoff: true });
+    await vi.advanceTimersByTimeAsync(5_000);
+    await stop;
+    pending.resolve();
+    expect(await lateAttempt.promise).toContain("lease is no longer active");
+    await flushMicrotasks();
+    expect(registry.httpRoutes.map((route) => route.handoff)).toEqual([true]);
+  });
+
+  it.each(["removed", "disabled", "manual"] as const)(
+    "removes %s ingress while its timed-out predecessor still needs cleanup",
+    async (action) => {
+      const pending = createDeferred();
+      let disabled = false;
+      const registry = installTestRegistry(
+        createTestPlugin({
+          startAccount: async () => {
+            registerPluginHttpRoute({
+              path: "/plugins/removed-reload",
+              auth: "plugin",
+              pluginId: "discord",
+              handler: vi.fn(),
+              throwOnFailure: true,
+            });
+            await pending.promise;
+          },
+        }),
+      );
+      const manager = createManager({
+        getPluginHttpRouteRegistry: () => registry,
+        getRuntimeConfig: () => ({ channels: { discord: { enabled: !disabled } } }),
+      });
+      try {
+        await manager.startChannels();
+        if (action === "manual") {
+          const stop = manager.stopChannel("discord");
+          await vi.advanceTimersByTimeAsync(5_000);
+          await stop;
+        }
+        const stop = manager.stopChannel("discord", undefined, {
+          manual: false,
+          routeHandoff: true,
+        });
+        await vi.advanceTimersByTimeAsync(5_000);
+        await stop;
+        if (action !== "manual") {
+          expect(registry.httpRoutes.map((route) => route.handoff)).toEqual([true]);
+        }
+        if (action === "manual") {
+          await manager.startChannel("discord", undefined, { preserveManualStop: true });
+        } else if (action === "disabled") {
+          disabled = true;
+          await manager.startChannels();
+        } else {
+          manager.pruneInactiveChannelAccountState(new Set());
+        }
+        expect(registry.httpRoutes).toEqual([]);
+      } finally {
+        pending.resolve();
+        await flushMicrotasks();
+      }
+    },
+  );
+
+  it("retires removed ingress even when account teardown rejects", async () => {
+    let removed = false;
+    const stopAccount = vi.fn(async () => {});
+    const registry = installTestRegistry(
+      createTestPlugin({
+        listAccountIds: () => (removed ? [] : [DEFAULT_ACCOUNT_ID]),
+        resolveAccount: () => {
+          if (removed) {
+            throw new Error("account is no longer configured");
+          }
+          return { enabled: true };
+        },
+        startAccount: async ({ abortSignal }) => {
+          registerPluginHttpRoute({
+            path: "/plugins/removed",
+            auth: "plugin",
+            pluginId: "discord",
+            handler: vi.fn(),
+          });
+          await new Promise<void>((resolve) => {
+            abortSignal.addEventListener("abort", () => resolve(), { once: true });
+          });
+        },
+        stopAccount,
+      }),
+    );
+    const manager = createManager({ getPluginHttpRouteRegistry: () => registry });
+    await manager.startChannels();
+    removed = true;
+    await expect(
+      manager.stopChannel("discord", undefined, { manual: false, routeHandoff: true }),
+    ).rejects.toThrow("account is no longer configured");
+    expect(registry.httpRoutes).toEqual([]);
+    removed = false;
+  });
+
   it.each([false, true])(
     "scopes stop routes to their Gateway and releases them when teardown settles (rejects=%s)",
     async (rejects) => {

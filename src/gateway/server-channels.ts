@@ -40,7 +40,11 @@ import {
   createPluginRuntimeCapabilityLease,
   type PluginRuntimeCapabilityLease,
 } from "../plugins/capability-lease.js";
-import { withPluginHttpRouteRegistry } from "../plugins/http-registry.js";
+import {
+  createPluginHttpRouteHandoff,
+  withPluginHttpRouteRegistry,
+  type PluginHttpRouteHandoff,
+} from "../plugins/http-registry.js";
 import type { PluginRegistry } from "../plugins/registry.js";
 import type { PluginRuntimeChannel } from "../plugins/runtime/types-channel.js";
 import { runOutsideGatewayRootWorkAdmission } from "../process/gateway-work-admission.js";
@@ -87,6 +91,7 @@ function waitForChannelStartupHandoff(): Promise<void> {
 
 type ChannelRuntimeStore = {
   aborts: Map<string, AbortController>;
+  routeHandoffs: Map<string, { handoff: PluginHttpRouteHandoff; parkedBy: AbortController }>;
   capabilityLeases: Map<string, PluginRuntimeCapabilityLease>;
   starting: Map<string, Promise<void>>;
   stops: Map<string, ChannelAccountStopState>;
@@ -148,6 +153,7 @@ type GatewayStartupTrace = {
 function createRuntimeStore(): ChannelRuntimeStore {
   return {
     aborts: new Map(),
+    routeHandoffs: new Map(),
     capabilityLeases: new Map(),
     starting: new Map(),
     stops: new Map(),
@@ -244,6 +250,7 @@ type ChannelManagerOptions = {
 
 type StopChannelOptions = {
   manual?: boolean;
+  routeHandoff?: boolean;
 };
 
 type ChannelAccountStopOutcome = { status: "fulfilled" } | { status: "rejected"; error: unknown };
@@ -277,6 +284,7 @@ export type ChannelManager = {
     opts?: StartChannelOptions,
   ) => Promise<ReadonlyMap<string, ChannelAccountStartOutcome>>;
   stopChannel: (channel: ChannelId, accountId?: string, opts?: StopChannelOptions) => Promise<void>;
+  releaseChannelRouteHandoffs: (channel: ChannelId, accountId?: string) => void;
   setAutostartSuppression: (suppression: ChannelAutostartSuppression | null) => void;
   getAutostartSuppression: () => ChannelAutostartSuppression | null;
   recoverAutostartSuppression: () => Promise<boolean>;
@@ -322,6 +330,22 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
   );
 
   const restartKey = (channelId: ChannelId, accountId: string) => `${channelId}:${accountId}`;
+  const releaseRouteHandoff = (
+    store: ChannelRuntimeStore,
+    accountId: string,
+    expected = store.routeHandoffs.get(accountId),
+  ): void => {
+    if (expected && store.routeHandoffs.get(accountId) === expected) {
+      expected.handoff.release();
+      store.routeHandoffs.delete(accountId);
+    }
+  };
+  const releaseChannelRouteHandoffs = (channelId: ChannelId, accountId?: string): void => {
+    const store = getStore(channelId);
+    for (const id of accountId ? [accountId] : store.routeHandoffs.keys()) {
+      releaseRouteHandoff(store, id);
+    }
+  };
   const ensureChannelLog = (channelId: ChannelId): SubsystemLogger => {
     channelLogs[channelId] ??= createSubsystemLogger("channels").child(channelId);
     return channelLogs[channelId];
@@ -464,6 +488,11 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
     accountIds: readonly string[],
   ) => {
     const activeAccountIds = new Set(accountIds);
+    for (const id of store.routeHandoffs.keys()) {
+      if (!activeAccountIds.has(id)) {
+        releaseRouteHandoff(store, id);
+      }
+    }
     for (const id of store.runtimes.keys()) {
       if (
         activeAccountIds.has(id) ||
@@ -506,6 +535,10 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
     const plugin = registration?.plugin;
     const startAccount = plugin?.gateway?.startAccount;
     if (!startAccount) {
+      const store = getStore(channelId);
+      for (const id of accountId ? [accountId] : store.routeHandoffs.keys()) {
+        releaseRouteHandoff(store, id);
+      }
       return accountId
         ? new Map([[accountId, { status: "skipped", reason: "unsupported" }]])
         : new Map();
@@ -534,6 +567,7 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
         `channel autostart suppressed by crash-loop breaker; refusing automatic start for ${channelId}${suffix}. ${formatGatewayCrashLoopManualChannelStartHint({ channelId, ...(accountId ? { accountId } : {}) })}`,
       );
       for (const id of accountIds) {
+        releaseRouteHandoff(store, id);
         setStoppedRuntime(channelId, id, {
           restartPending: false,
           lastError: autostartSuppression.message,
@@ -548,6 +582,7 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
     }
     if (ambientAutostartSuppressedChannelIds.has(channelId) && optsValue.manual !== true) {
       for (const id of accountIds) {
+        releaseRouteHandoff(store, id);
         setStoppedRuntime(channelId, id, {
           restartPending: false,
           lastError:
@@ -565,6 +600,16 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
       tasks: accountIds.map((id) => async () => {
         assertStartCurrent();
         const rKey = restartKey(channelId, id);
+        const explicitlyDisabled = isChannelAccountExplicitlyDisabled({
+          cfg,
+          channel: channelId,
+          accountId: id,
+        });
+        // An operator disable ends ingress even when an aborted predecessor
+        // still owns its task slot. Keep that slot for its separate cleanup.
+        if (explicitlyDisabled) {
+          releaseRouteHandoff(store, id);
+        }
         // Record start intent before waiting; a later stop must survive cancelled preparation.
         if (!preserveManualStop && !store.stops.has(id)) {
           manuallyStopped.delete(rKey);
@@ -627,6 +672,7 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
 
         // Reserve the account before the first await so overlapping start calls
         // cannot race into duplicate provider boots for the same account.
+        const routeHandoff = store.routeHandoffs.get(id);
         const abort = new AbortController();
         const capabilityLease = createPluginRuntimeCapabilityLease("channel account");
         store.aborts.set(id, abort);
@@ -673,7 +719,7 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
           // Explicitly disabled accounts need no credentials. Unlisted requests still go
           // through the plugin resolver so a disable cannot hide account-selection errors.
           if (
-            isChannelAccountExplicitlyDisabled({ cfg, channel: channelId, accountId: id }) &&
+            explicitlyDisabled &&
             plugin.config
               .listAccountIds(cfg)
               .some((listed) => normalizeAccountId(listed) === normalizeAccountId(id))
@@ -910,6 +956,11 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
             if (store.capabilityLeases.get(id) === capabilityLease) {
               store.capabilityLeases.delete(id);
             }
+            // Only this start's inherited handoff can end here. A timed-out
+            // predecessor must not release a newer replacement's ingress.
+            if (routeHandoff) {
+              releaseRouteHandoff(store, id, routeHandoff);
+            }
           });
           // Recovery can replace a timed-out task before the old promise settles.
           // Only the task that still owns the store slot may write lifecycle state.
@@ -1108,6 +1159,9 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
             if (store.capabilityLeases.get(id) === capabilityLease) {
               store.capabilityLeases.delete(id);
             }
+            if (routeHandoff) {
+              releaseRouteHandoff(store, id, routeHandoff);
+            }
             await cleanupTaskScopedApprovalRuntime("channel startup cleanup failed");
           }
           if (!handedOffTask && store.aborts.get(id) === abort) {
@@ -1139,6 +1193,9 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
     const manual = optsLocal.manual ?? true;
     const plugin = getChannelPlugin(channelId);
     const store = getStore(channelId);
+    if (manual || !optsLocal.routeHandoff) {
+      releaseChannelRouteHandoffs(channelId, accountId);
+    }
     const lifecycleIds = new Set<string>([
       ...store.aborts.keys(),
       ...store.starting.keys(),
@@ -1151,10 +1208,10 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
       return;
     }
     const cfg = getRuntimeConfig();
+    const configuredAccountIds =
+      !accountId || optsLocal.routeHandoff ? (plugin?.config.listAccountIds(cfg) ?? []) : [];
     const knownIds = new Set<string>(
-      accountId
-        ? [accountId]
-        : [...lifecycleIds, ...(plugin ? plugin.config.listAccountIds(cfg) : [])],
+      accountId ? [accountId] : [...lifecycleIds, ...configuredAccountIds],
     );
 
     // Gate replacement starts before teardown begins. Failures still reject only
@@ -1169,10 +1226,29 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
         const runStopAttempt = async (
           previousOutcome: ChannelAccountStopOutcome,
         ): Promise<ChannelAccountStopOutcome> => {
+          const canHandoff =
+            optsLocal.routeHandoff &&
+            configuredAccountIds.includes(id) &&
+            !isChannelAccountExplicitlyDisabled({ cfg, channel: channelId, accountId: id }) &&
+            !manuallyStopped.has(rKey);
+          if (!canHandoff) {
+            releaseRouteHandoff(store, id);
+          }
           const abort = store.aborts.get(id);
           const task = store.tasks.get(id);
           if (!abort && !task && !plugin?.gateway?.stopAccount) {
             return previousOutcome;
+          }
+          const lease = store.capabilityLeases.get(id);
+          if (canHandoff && abort && lease && store.routeHandoffs.get(id)?.parkedBy !== abort) {
+            const handoff = store.routeHandoffs.get(id)?.handoff ?? createPluginHttpRouteHandoff();
+            handoff.park(lease);
+            store.routeHandoffs.set(id, { handoff, parkedBy: abort });
+          }
+          // Parking transfers ingress ownership before cancellation. Retired
+          // startup work must never reclaim it while its promise is settling.
+          if (optsLocal.routeHandoff) {
+            lease?.revoke();
           }
           abort?.abort();
           const log = ensureChannelLog(channelId);
@@ -1494,6 +1570,7 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
     startChannels,
     startChannel: startChannelInternal,
     stopChannel,
+    releaseChannelRouteHandoffs,
     pruneInactiveChannelAccountState,
     setAutostartSuppression: (suppression) => {
       autostartSuppression = suppression;

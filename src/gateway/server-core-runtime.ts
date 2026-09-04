@@ -5,6 +5,7 @@ import { listLoadedChannelPluginsForRegistry } from "../channels/plugins/registr
 import type { ChannelId } from "../channels/plugins/types.public.js";
 import { getRuntimeConfig } from "../config/io.js";
 import type { createSubsystemLogger } from "../logging/subsystem.js";
+import { adoptPluginHttpRouteHandoffs } from "../plugins/http-registry.js";
 import { isGatewayWorkAdmissionClosed } from "../process/gateway-work-admission.js";
 import { createAgentRuntimeApprovalAuthorityValidator } from "./agent-runtime-identity-token.js";
 import { restartRunningChannelAccounts, type ThawRestartTarget } from "./channel-thaw-restart.js";
@@ -430,6 +431,7 @@ export async function startGatewayCoreRuntime(input: {
     gatewayMethods: string[];
     retireGatewayRuntimeBindings?: () => void;
   }) => {
+    adoptPluginHttpRouteHandoffs(pluginRuntime.registry, loaded.pluginRegistry);
     const retirePreviousBindings = retireAttachedPluginRuntimeBindings;
     retireAttachedPluginRuntimeBindings = loaded.retireGatewayRuntimeBindings ?? (() => {});
     retirePreviousBindings();
