@@ -12,6 +12,9 @@ import { wrapToolWithBeforeToolCallHook } from "../../agent-tools.before-tool-ca
 import type { createOpenClawCodingTools } from "../../agent-tools.js";
 import { Agent, type AgentTool } from "../../runtime/index.js";
 import { getInternalToolExecutionPreparer } from "../../runtime/internal-hooks.js";
+import { SessionManager } from "../../sessions/session-manager.js";
+import { TOOL_EXECUTION_GATED_MESSAGE } from "../../tool-policy-shared.js";
+import { isToolResultError } from "../../tool-result-error.js";
 import type { ToolSearchCatalogRef } from "../../tool-search.js";
 import { createAgentsWaitTool } from "../../tools/agents-wait-tool.js";
 import { createSessionsSpawnTool } from "../../tools/sessions-spawn-tool.js";
@@ -89,7 +92,7 @@ describe("runEmbeddedAttempt tool-search catalog cleanup", () => {
     },
   ])(
     "does not enter the original preparer or action through denied $mode",
-    async ({ toolName, code }) => {
+    async ({ mode, toolName, code }) => {
       const execute = vi.fn(async () => ({ content: [], details: {} }));
       const prepare = vi.fn(async (args: unknown) => args);
       const native =
@@ -119,6 +122,10 @@ describe("runEmbeddedAttempt tool-search catalog cleanup", () => {
           let turn = 0;
           const agent = new Agent({
             initialState: { model: options.model, tools: allTools },
+            // Match the embedded session's structured tool-result error projection.
+            afterToolCall: async ({ result, isError }) => ({
+              isError: isError || isToolResultError(result),
+            }),
             streamFn: () => {
               const content: AssistantMessage["content"] =
                 turn++ === 0
@@ -161,7 +168,7 @@ describe("runEmbeddedAttempt tool-search catalog cleanup", () => {
               return stream;
             },
           });
-          agent.subscribe((event) => {
+          const unsubscribe = agent.subscribe((event) => {
             if (event.type === "tool_execution_end") {
               outcomes.push(event);
             }
@@ -182,9 +189,19 @@ describe("runEmbeddedAttempt tool-search catalog cleanup", () => {
             opts?.preflightResult?.(true);
             await agent.prompt(prompt);
           };
+          session.abort = async () => {
+            agent.abort();
+            await agent.waitForIdle();
+          };
+          const dispose = session.dispose;
+          session.dispose = () => {
+            unsubscribe();
+            dispose();
+          };
           return session;
         },
         attemptOverrides: {
+          sessionManager: SessionManager.inMemory(),
           disableTools: false,
           toolExecutionAllow: ["read"],
           config: { tools: { codeMode: Boolean(code), toolSearch: false } },
@@ -192,7 +209,31 @@ describe("runEmbeddedAttempt tool-search catalog cleanup", () => {
       });
       expect(observed.length).toBeGreaterThanOrEqual(1);
       expect(outcomes).toContainEqual(
-        expect.objectContaining({ toolName: code ? "exec" : toolName, isError: true }),
+        expect.objectContaining({
+          toolName: code ? "exec" : toolName,
+          isError: true,
+          result: expect.objectContaining({
+            content: [
+              expect.objectContaining({
+                type: "text",
+                text: expect.stringContaining(
+                  mode === "joined Code Mode"
+                    ? "agents is not defined"
+                    : TOOL_EXECUTION_GATED_MESSAGE,
+                ),
+              }),
+            ],
+            ...(code
+              ? {
+                  details: expect.objectContaining({
+                    status: "failed",
+                    failurePhase: mode === "joined Code Mode" ? "guest" : "bridge",
+                    bridgeDispatchStarted: mode !== "joined Code Mode",
+                  }),
+                }
+              : {}),
+          }),
+        }),
       );
       expect(prepare).not.toHaveBeenCalled();
       expect(execute).not.toHaveBeenCalled();
