@@ -1,8 +1,5 @@
 // Inworld voice list timeout proof.
-// fetchWithSsrFGuard treats a vi.fn fetch stub as hermetic (no DNS pinning, no
-// dispatcher) and passes its timeout abort signal via init.signal, so a
-// never-resolving signal-honoring stub plus fake timers exercises the real
-// abort path with no live sockets or wall-clock bounds to flake on loaded CI.
+import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { listInworldVoices } from "./tts.js";
 
@@ -14,6 +11,7 @@ describe("listInworldVoices timeout", () => {
 
   it("aborts a hanging voice list request within the configured timeout", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const fetchStarted = createDeferred<void>();
     const fetchMock = vi.fn(
       (_input: RequestInfo | URL, init?: RequestInit) =>
         new Promise<Response>((_resolve, reject) => {
@@ -28,9 +26,10 @@ describe("listInworldVoices timeout", () => {
               reject(signal.reason instanceof Error ? signal.reason : new Error("request aborted")),
             { once: true },
           );
+          fetchStarted.resolve();
         }),
     );
-    vi.stubGlobal("fetch", fetchMock as unknown as typeof globalThis.fetch);
+    vi.stubGlobal("fetch", fetchMock);
 
     const request = listInworldVoices({
       apiKey: "test-key",
@@ -39,14 +38,20 @@ describe("listInworldVoices timeout", () => {
     });
     const rejection = expect(request).rejects.toThrow(/aborted|timeout|timed out/i);
 
-    // Flush guard preflight microtasks so the request is in flight.
-    await vi.advanceTimersByTimeAsync(0);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    try {
+      // Lazy imports are not fake-timer work; wait for the actual request boundary.
+      await Promise.race([fetchStarted.promise, request]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(249);
-    expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(249);
+      expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(false);
 
-    await vi.advanceTimersByTimeAsync(1);
-    await rejection;
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+    } finally {
+      // Settle the request before restoring fetch, even when an earlier assertion fails.
+      await vi.runAllTimersAsync();
+      await rejection;
+    }
   });
 });
