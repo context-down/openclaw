@@ -9,10 +9,7 @@ import zlib from "node:zlib";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../../infra/kysely-sync.js";
 import { withFreshOpenClawAgentDatabaseReadOnly } from "../../state/openclaw-agent-db-readonly-fresh.js";
 import type { DB as OpenClawAgentKyselyDatabase } from "../../state/openclaw-agent-db.generated.js";
-import {
-  settleOpenClawAgentDatabaseWorkerClose,
-  type OpenClawAgentDatabaseWorkerCloseResult,
-} from "../../state/openclaw-agent-db.js";
+import type { OpenClawAgentDatabaseWorkerCloseResult } from "../../state/openclaw-agent-db.js";
 import {
   hashSessionArchiveBytes,
   MAX_MATERIALIZED_ARCHIVE_BATCH_BYTES,
@@ -30,10 +27,10 @@ import {
   sqliteSessionStateDeleteSnapshotsEqual,
 } from "./session-accessor.sqlite-delete-snapshot.js";
 import type { SessionStateDeleteSnapshot } from "./session-accessor.sqlite-delete-snapshot.types.js";
-import {
-  reclaimSqliteSessionInTransaction,
-  type SqliteSessionReclamationWorkerData,
-  type SqliteSessionReclamationWorkerResult,
+import { prepareReclamationCommit } from "./session-accessor.sqlite-reclamation-commit.js";
+import type {
+  SqliteSessionReclamationWorkerData,
+  SqliteSessionReclamationWorkerResult,
 } from "./session-accessor.sqlite-reclamation.js";
 
 type TranscriptArchiveDatabase = Pick<
@@ -46,6 +43,8 @@ const WORKER_CLOSE_MAX_ATTEMPTS = 3;
 async function settleReclamationDatabase(
   pathname: string,
 ): Promise<{ cleanupWarnings: string[]; settled: boolean }> {
+  const { settleOpenClawAgentDatabaseWorkerClose } =
+    await import("../../state/openclaw-agent-db.js");
   const warnings = new Set<string>();
   let outcome: OpenClawAgentDatabaseWorkerCloseResult = { errors: [], settled: false };
   for (let attempt = 0; attempt < WORKER_CLOSE_MAX_ATTEMPTS; attempt += 1) {
@@ -410,11 +409,38 @@ async function runReclamationWorkerPort(
   port: NonNullable<typeof parentPort>,
   data: SqliteSessionReclamationWorkerData,
 ): Promise<void> {
+  // Materialize/publish use fresh readers; only reclamation needs the writable runtime closure.
+  const handoff =
+    data.operation === "reclaim-guarded"
+      ? prepareReclamationCommit(data.control, () =>
+          port.postMessage({ type: "reclamation-ready" }),
+        )
+      : undefined;
+  const { reclaimSqliteSessionInTransaction } =
+    await import("./session-accessor.sqlite-reclamation.js");
   let result: ReturnType<typeof reclaimSqliteSessionInTransaction>;
   try {
-    result = reclaimSqliteSessionInTransaction(data.plan);
+    if (handoff) {
+      const { openOpenClawAgentDatabase } = await import("../../state/openclaw-agent-db.js");
+      const { db } = openOpenClawAgentDatabase(data.plan.databaseOptions);
+      // Rollback spills take EXCLUSIVE and block the parent's guard read.
+      // Defer spills until COMMIT at transaction-sized memory cost. This one-shot
+      // connection closes below; the setting never reaches other callers.
+      if (db.prepare("PRAGMA journal_mode").get()?.journal_mode === "delete") {
+        db.exec("PRAGMA cache_spill = OFF"); // sqlite-allow-raw: connection-local pager coordination.
+      }
+    }
+    result = reclaimSqliteSessionInTransaction(data.plan, { beforeCommit: handoff?.beforeCommit });
+    handoff?.committed();
   } catch (error) {
     const cleanup = await settleReclamationDatabase(data.plan.databaseOptions.path);
+    if (cleanup.cleanupWarnings.length > 0 || !cleanup.settled) {
+      port.postMessage({
+        type: "reclamation-cleanup",
+        warnings: cleanup.cleanupWarnings,
+        settled: cleanup.settled,
+      });
+    }
     if (!cleanup.settled) {
       throw new AggregateError(
         [error, ...cleanup.cleanupWarnings.map((warning) => new Error(warning))],
@@ -451,7 +477,7 @@ if (isSqliteTranscriptArchiveWorkerData(workerData)) {
       throw new Error("SQLite transcript archive worker requires valid publication data");
     }
     runPublishWorkerPort(parentPort, plans);
-  } else if (operation === "reclaim") {
+  } else if (operation === "reclaim" || operation === "reclaim-guarded") {
     // SAFETY: the parent creates this internal structured-clone payload from the typed plan.
     await runReclamationWorkerPort(parentPort, workerData as SqliteSessionReclamationWorkerData);
   } else {

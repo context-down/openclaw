@@ -154,7 +154,7 @@ export async function cleanupSessionLifecycleArtifactsCore(
             materializedPlans,
           });
           const reclaimed = await runSqliteSessionReclamation({
-            beforeInProcessMutation: assertCurrent,
+            assertCurrent,
             forceInProcess: hasPreparedNativeSessionDeletion(),
             plan,
           });
@@ -460,6 +460,8 @@ async function deleteSqliteSessionEntryLifecycleLocked(
                 `cannot delete session history while work is in flight for ${sessionId}; retry after the run completes`,
               );
             }
+            // Native companion mutations stay in-process. Other live caller guards authorize
+            // the Worker only after its rollbackable SQL, at the final COMMIT edge.
             const reclamationPlan = createHistoricalGenerationReclamationPlan({
               databaseOptions: toDatabaseOptions(resolved),
               deleteParams: params,
@@ -469,10 +471,8 @@ async function deleteSqliteSessionEntryLifecycleLocked(
               sessionId,
             });
             const reclaimed = await runSqliteSessionReclamation({
-              beforeInProcessMutation: () => {
-                params.commitGuard?.();
-                assertCurrent();
-              },
+              assertCurrent,
+              commitGuard: params.commitGuard,
               forceInProcess: hasPreparedNativeSessionDeletion(),
               onInProcessCommit: recordCommit,
               plan: reclamationPlan,
@@ -519,10 +519,8 @@ async function deleteSqliteSessionEntryLifecycleLocked(
             preparedTargetSnapshot: prepared.targetSnapshot,
           });
           const reclaimed = await runSqliteSessionReclamation({
-            beforeInProcessMutation: () => {
-              params.commitGuard?.();
-              assertCurrent();
-            },
+            assertCurrent,
+            commitGuard: params.commitGuard,
             forceInProcess: hasPreparedNativeSessionDeletion(),
             onInProcessCommit: recordCommit,
             plan: reclamationPlan,

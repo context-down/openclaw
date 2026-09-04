@@ -443,7 +443,7 @@ export function runOpenClawAgentWriteTransaction<T>(
   options: OpenClawAgentDatabaseOptions,
   transactionOptions: Pick<
     SqliteTransactionOptions,
-    "busyTimeoutMs" | "operationLabel" | "slowTransactionHoldMs"
+    "beforeCommit" | "busyTimeoutMs" | "operationLabel" | "slowTransactionHoldMs"
   > = {},
 ): T {
   const database = openOpenClawAgentDatabase(options);

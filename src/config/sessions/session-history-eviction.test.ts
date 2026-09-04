@@ -675,7 +675,7 @@ describe("SQLite historical session disk budget", () => {
     },
   );
 
-  it.each(["archivedAt", "pinnedAt", "age-retention", "manual"] as const)(
+  it.each(["archivedAt", "pinnedAt", "age-retention", "manual", "recent"] as const)(
     "rechecks %s on the logical owner before deleting an older generation",
     async (field) => {
       const sessionKey = "agent:main:archive-race";
@@ -684,22 +684,22 @@ describe("SQLite historical session disk budget", () => {
         nextSessionId: "race-live",
         sessionId: "race-old",
         sessionKey,
-        updatedAt: Date.now(),
+        updatedAt: Date.now() - 8 * 24 * 60 * 60 * 1000,
       });
       replaceSessionEntrySync(
         { sessionKey, storePath },
         {
           sessionId: "race-live",
-          updatedAt: Date.now(),
+          updatedAt: Date.now() - 8 * 24 * 60 * 60 * 1000,
           archivedAt: Date.now(),
           archiveReason: "active-session-cap",
         },
       );
-      const archive = await import("./session-accessor.sqlite-archive.js");
-      const materialize = archive.materializeSessionStateDeletePlans;
-      vi.spyOn(archive, "materializeSessionStateDeletePlans").mockImplementationOnce(
-        async (plans) => {
-          const prepared = await materialize(plans);
+      const reclamation = await import("./session-accessor.sqlite-reclamation.js");
+      const reclaim = reclamation.runSqliteSessionReclamation;
+      const dispatch = vi
+        .spyOn(reclamation, "runSqliteSessionReclamation")
+        .mockImplementationOnce(async (params) => {
           replaceSessionEntrySync(
             { sessionKey, storePath },
             {
@@ -707,19 +707,25 @@ describe("SQLite historical session disk budget", () => {
               updatedAt: Date.now(),
               ...(field === "age-retention" || field === "manual"
                 ? { archivedAt: Date.now(), archiveReason: field }
-                : { [field]: Date.now() }),
+                : field === "recent"
+                  ? {}
+                  : { [field]: Date.now() }),
             },
           );
-          return prepared;
-        },
-      );
+          return await reclaim(params);
+        });
       expect(
         await enforceSqliteSessionHistoryDiskBudget({
           storePath,
           mode: "enforce",
-          maintenance: { maxDiskBytes: 1, highWaterBytes: 1 },
+          maintenance: {
+            maxDiskBytes: 1,
+            highWaterBytes: 1,
+            ...(field === "recent" ? { preserveRecentMs: 7 * 24 * 60 * 60 * 1000 } : {}),
+          },
         }),
       ).toMatchObject({ removedEntries: 0 });
+      expect(dispatch).toHaveBeenCalledOnce();
       expect(
         loadTranscriptEventsSync({ sessionId: "race-old", sessionKey, storePath }),
       ).not.toEqual([]);

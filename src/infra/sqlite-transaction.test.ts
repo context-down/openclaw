@@ -128,6 +128,63 @@ describe("runSqliteDeferredTransactionSync", () => {
 });
 
 describe("runSqliteImmediateTransactionSync", () => {
+  it("checks final authority after nested work and rolls everything back on rejection", () => {
+    const db = createDatabase();
+    const rejection = new Error("authority revoked");
+    const beforeCommit = vi.fn(() => {
+      expect(readEntries(db)).toEqual(["inner", "outer"]);
+      throw rejection;
+    });
+    expect(() =>
+      runSqliteImmediateTransactionSync(
+        db,
+        () => {
+          db.prepare("INSERT INTO entries VALUES (?, ?)").run("outer", "pending");
+          runSqliteImmediateTransactionSync(db, () => {
+            db.prepare("INSERT INTO entries VALUES (?, ?)").run("inner", "pending");
+          });
+        },
+        { beforeCommit },
+      ),
+    ).toThrow(rejection);
+    expect(beforeCommit).toHaveBeenCalledTimes(1);
+    expect(readEntries(db)).toEqual([]);
+    expect(db.isTransaction).toBe(false);
+  });
+
+  it("cannot attach durable commit authority to a nested savepoint", () => {
+    const db = createDatabase();
+    const beforeCommit = vi.fn();
+    expect(() =>
+      runSqliteImmediateTransactionSync(db, () => {
+        runSqliteImmediateTransactionSync(
+          db,
+          () => {
+            db.prepare("INSERT INTO entries VALUES (?, ?)").run("inner", "pending");
+          },
+          { beforeCommit },
+        );
+      }),
+    ).toThrow("not a savepoint");
+    expect(beforeCommit).not.toHaveBeenCalled();
+    expect(readEntries(db)).toEqual([]);
+  });
+
+  it("rejects asynchronous final authority checks before COMMIT", () => {
+    const db = createDatabase();
+    expect(() =>
+      runSqliteImmediateTransactionSync(
+        db,
+        () => {
+          db.prepare("INSERT INTO entries VALUES (?, ?)").run("pending", "pending");
+        },
+        // Exercise a JavaScript caller bypassing the synchronous callback type.
+        { beforeCommit: (async () => undefined) as () => void },
+      ),
+    ).toThrow("must be synchronous");
+    expect(readEntries(db)).toEqual([]);
+  });
+
   it("keeps outer writes when a nested savepoint rolls back", () => {
     const db = createDatabase();
 

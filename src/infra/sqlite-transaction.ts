@@ -24,6 +24,8 @@ let nextSavepointId = 0;
 const transactionLog = createSubsystemLogger("sqlite/transaction");
 
 export type SqliteTransactionOptions = {
+  /** Synchronous authority check at the outer COMMIT edge; never a savepoint release. */
+  beforeCommit?: () => void;
   busyTimeoutMs?: number;
   databaseLabel?: string;
   logger?: Pick<SubsystemLogger, "warn">;
@@ -141,6 +143,9 @@ function execTimedTransactionStep(params: {
 }): number {
   const startedAt = Date.now();
   try {
+    if (params.step === "commit") {
+      assertSyncTransactionResult(params.options?.beforeCommit?.());
+    }
     params.db.exec(params.sql);
     const elapsedMs = Date.now() - startedAt;
     logSlowTransactionStep({
@@ -234,6 +239,9 @@ function runSqliteTransactionSync<T>(
 ): T {
   const depth = getTransactionDepth(db);
   if (depth > 0) {
+    if (options?.beforeCommit) {
+      throw new Error("SQLite commit authority requires an outer transaction, not a savepoint");
+    }
     const savepointName = nextSavepointName();
     db.exec(`SAVEPOINT ${savepointName}`);
     setTransactionDepth(db, depth + 1);

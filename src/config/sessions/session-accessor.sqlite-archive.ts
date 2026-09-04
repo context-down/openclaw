@@ -3,6 +3,7 @@ import { Worker } from "node:worker_threads";
 import { toStringifiedError } from "@openclaw/normalization-core/error-coercion";
 import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
 import { resolveRuntimeWorkerUrl } from "../../infra/runtime-worker-url.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { KeyedAsyncQueue } from "../../plugin-sdk/keyed-async-queue.js";
 import { withOpenClawAgentDatabaseReadOnly } from "../../state/openclaw-agent-db-readonly.js";
 import type {
@@ -10,8 +11,6 @@ import type {
   SessionStateDeletePlan,
   TranscriptArchivePublishPlan,
   TranscriptArchivePublishResult,
-  TranscriptArchivePublishWorkerMessage,
-  TranscriptArchiveWorkerMessage,
   TranscriptArchiveWorkerPlan,
   TranscriptArchiveWorkerResult,
 } from "./session-accessor.sqlite-archive-files.js";
@@ -19,6 +18,9 @@ import {
   readSessionStateDeleteSnapshot,
   sqliteSessionStateDeleteSnapshotsEqual,
 } from "./session-accessor.sqlite-delete-snapshot.js";
+import { bindReclamationCommit } from "./session-accessor.sqlite-reclamation-commit.js";
+
+const archiveWorkerLog = createSubsystemLogger("sessions/reclamation");
 
 function resolveSourceWorkerExecArgv(): string[] {
   // Node 22 can strip the .ts entrypoint itself, but `--import tsx` does not
@@ -31,6 +33,7 @@ function resolveSourceWorkerExecArgv(): string[] {
 }
 
 function spawnSqliteTranscriptArchiveWorkerOperation<Result>(params: {
+  commitHandoff?: { control: SharedArrayBuffer; guard: () => void };
   expectedMessageType: "done" | "published" | "reclaimed";
   transferList?: ArrayBuffer[];
   workerData: object;
@@ -51,13 +54,34 @@ function spawnSqliteTranscriptArchiveWorkerOperation<Result>(params: {
   }
 
   return new Promise((resolve, reject) => {
+    const handoff = params.commitHandoff
+      ? bindReclamationCommit(worker, params.commitHandoff.control, params.commitHandoff.guard)
+      : undefined;
     let results: Result[] | undefined;
     let workerError: Error | undefined;
-    worker.on("message", (message: { results: Result[]; type: string }) => {
-      if (message.type === params.expectedMessageType) {
-        (results ??= []).push(...message.results);
-      }
-    });
+    worker.on(
+      "message",
+      (message: { results: Result[]; type: string; warnings?: string[]; settled?: boolean }) => {
+        if (message.type === "reclamation-ready") {
+          handoff?.ready();
+          return;
+        }
+        if (message.type === "reclamation-cleanup") {
+          // Guard rejection must preserve the caller's Error, not hide a secondary close failure.
+          archiveWorkerLog.warn("SQLite reclamation Worker cleanup after rollback", {
+            errors: message.warnings,
+            settled: message.settled,
+            ...(!message.settled
+              ? { recovery: "restart OpenClaw before deleting the owning agent" }
+              : {}),
+          });
+          return;
+        }
+        if (message.type === params.expectedMessageType) {
+          (results ??= []).push(...message.results);
+        }
+      },
+    );
     worker.once("error", (error) => {
       // An uncaught Worker error is followed by exit. Wait for that event so
       // callers never race the Worker's SQLite/file handles on Windows.
@@ -65,6 +89,18 @@ function spawnSqliteTranscriptArchiveWorkerOperation<Result>(params: {
     });
     worker.once("exit", (code) => {
       worker.removeAllListeners();
+      const failure = handoff?.finish(
+        workerError ??
+          (code !== 0
+            ? new Error(`SQLite transcript archive worker exited with code ${code}`)
+            : !results
+              ? new Error("SQLite transcript archive worker exited without results")
+              : undefined),
+      );
+      if (failure !== undefined) {
+        reject(failure);
+        return;
+      }
       if (workerError) {
         reject(workerError);
         return;
@@ -88,6 +124,7 @@ const sqliteTranscriptArchiveWorkerQueue = new KeyedAsyncQueue();
 const SQLITE_TRANSCRIPT_ARCHIVE_WORKER_QUEUE_KEY = "lifecycle-archive";
 
 export function runSqliteTranscriptArchiveWorkerOperation<Result>(params: {
+  commitHandoff?: { control: SharedArrayBuffer; guard: () => void };
   expectedMessageType: "done" | "published" | "reclaimed";
   transferList?: ArrayBuffer[];
   workerData: object;
