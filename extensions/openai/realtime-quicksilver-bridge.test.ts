@@ -1,6 +1,16 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import type { ClientOptions } from "ws";
+
+const { captureWsEventMock } = vi.hoisted(() => ({
+  captureWsEventMock: vi.fn(),
+}));
+
+vi.mock("openclaw/plugin-sdk/proxy-capture", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("openclaw/plugin-sdk/proxy-capture")>();
+  return { ...actual, captureWsEvent: captureWsEventMock };
+});
+
 import { OpenAIQuicksilverVoiceBridge } from "./realtime-quicksilver-bridge.js";
 import type {
   OpenAIQuicksilverSocket,
@@ -68,6 +78,7 @@ function createHarness(params?: {
   autoStart?: boolean;
   deferClose?: boolean;
   afterOpen?: (socket: FakeSocket) => void;
+  model?: string;
   resolveAuth?: () => Promise<{ type: "api-key"; token: string }>;
 }) {
   const socket = new FakeSocket(params?.autoStart, params?.afterOpen);
@@ -88,7 +99,7 @@ function createHarness(params?: {
   const logger = { warn: vi.fn() };
   const bridge = new OpenAIQuicksilverVoiceBridge({
     providerConfig: {},
-    model: "gpt-live-test-canary",
+    model: params?.model ?? "gpt-live-test-canary",
     voice: "spruce",
     instructions: "Use delegation for real work.",
     audioFormat:
@@ -432,6 +443,51 @@ describe("OpenAIQuicksilverVoiceBridge", () => {
 
     expect(JSON.stringify(harness.onError.mock.calls)).not.toContain(model);
     expect(JSON.stringify(harness.onEvent.mock.calls)).not.toContain(model);
+  });
+
+  it("redacts raw startup and active transport errors", async () => {
+    const model = "sensitive-model-marker";
+    const startup = createHarness({
+      autoStart: false,
+      model,
+      afterOpen: (socket) => {
+        const error = new Error(`startup rejected ${model}`);
+        error.name = `Transport${model}`;
+        socket.emit("error", error);
+      },
+    });
+
+    const startupError = await startup.bridge.connect().catch((error: unknown) => error);
+    expect(startupError).toBeInstanceOf(Error);
+    expect(JSON.stringify(startupError)).not.toContain(model);
+    expect((startupError as Error).name).not.toContain(model);
+
+    const active = createHarness({ model });
+    await active.bridge.connect();
+    const error = new Error(`active transport failed ${model}`);
+    error.name = `Socket${model}`;
+    active.socket.emit("error", error);
+
+    expect(JSON.stringify(active.onError.mock.calls)).not.toContain(model);
+  });
+
+  it("captures only fixed metadata for private transport activity", async () => {
+    captureWsEventMock.mockClear();
+    const model = "sensitive-model-marker";
+    const transcript = "sensitive-frame-marker";
+    const harness = createHarness({ model });
+
+    await harness.bridge.connect();
+    harness.bridge.sendUserMessage(transcript);
+    harness.socket.serverEvent({
+      type: "turn.done",
+      turn: { role: "user", transcript },
+    });
+
+    const captured = JSON.stringify(captureWsEventMock.mock.calls);
+    expect(captured).not.toContain(model);
+    expect(captured).not.toContain(transcript);
+    expect(captureWsEventMock.mock.calls.every(([event]) => !("payload" in event))).toBe(true);
   });
 
   it("bounds direct tool results before sideband sends", async () => {
