@@ -22,6 +22,7 @@ export type ChromeMcpSession = {
   client: Client;
   transport: StdioClientTransport;
   ready: Promise<void>;
+  closeConnection: () => Promise<void>;
   processCleanup?: ChromeMcpProcessCleanupState;
   processCleanupRefresh?: Promise<void>;
   routing?: ChromeMcpRoutingState;

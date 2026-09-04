@@ -16,7 +16,6 @@ import {
   redactChromeMcpLocalPathForDiagnostic,
   redactChromeMcpProfileLabelForDiagnostic,
 } from "./chrome-mcp-diagnostics.js";
-import { normalizeChromeMcpOptions } from "./chrome-mcp-options.js";
 import {
   closeTrackedChromeMcpSession,
   refreshChromeMcpCleanupProcess,
@@ -46,8 +45,9 @@ async function withChromeMcpHandshakeTimeout<T>(task: Promise<T>): Promise<T> {
 }
 
 async function createRealSession(
+  cacheKey: string,
   profileName: string,
-  options: NormalizedChromeMcpProfileOptions = normalizeChromeMcpOptions(),
+  options: NormalizedChromeMcpProfileOptions,
 ): Promise<ChromeMcpSession> {
   const transport = new StdioClientTransport({
     command: options.command,
@@ -63,24 +63,31 @@ async function createRealSession(
   );
   // Capture before connect starts the subprocess so failed handshakes retain stderr.
   const stderrTail = drainStderr(transport);
+  const startTransport = transport.start.bind(transport);
   const session: ChromeMcpSession = {
     client,
     transport,
     ready: Promise.resolve(),
+    closeConnection: transport.close.bind(transport),
     processCleanup: { status: "open" },
   };
-  const requireSession = () => session;
+  transport.start = async () => {
+    await startTransport();
+    await refreshChromeMcpCleanupProcess(session);
+  };
+  // SDK initialization and read-buffer failures can close before connect settles.
+  // Funnel both SDK entry points through the same owner before it clears the PID.
+  client.close = transport.close = () => closeTrackedChromeMcpSession(cacheKey, session);
   const ready = (async () => {
     try {
       await withChromeMcpHandshakeTimeout(
         (async () => {
           await client.connect(transport);
-          await refreshChromeMcpCleanupProcess(requireSession());
           const tools = await client.listTools();
           if (!tools.tools.some((tool) => tool.name === "list_pages")) {
             throw new Error("Chrome MCP server did not expose the expected navigation tools.");
           }
-          await refreshChromeMcpCleanupProcess(requireSession());
+          await refreshChromeMcpCleanupProcess(session);
         })(),
       );
     } catch (err) {
@@ -201,7 +208,10 @@ export function createChromeMcpSession(
   options: NormalizedChromeMcpProfileOptions,
   signal?: AbortSignal,
 ): { promise: Promise<ChromeMcpSession>; cleanup: Promise<void> } {
-  const created = (getChromeMcpSessionFactory() ?? createRealSession)(profileName, options);
+  const factory = getChromeMcpSessionFactory();
+  const created = factory
+    ? factory(profileName, options)
+    : createRealSession(cacheKey, profileName, options);
   let adopted = false;
   let closePromise: Promise<void> | undefined;
   const closeCreated = async (session: ChromeMcpSession) => {

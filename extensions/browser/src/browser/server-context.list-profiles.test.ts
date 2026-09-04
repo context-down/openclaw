@@ -104,13 +104,11 @@ function createExistingSessionProcessFixture(
       transport,
       processCleanup: { status: "open" as const },
       ready: Promise.resolve(),
-      client: {
-        callTool,
-        close: vi.fn(async () => {
-          alive.delete(pid);
-          transport.pid = null;
-        }),
-      },
+      client: { callTool },
+      closeConnection: vi.fn(async () => {
+        alive.delete(pid);
+        transport.pid = null;
+      }),
     } as never;
   });
   setChromeMcpSessionFactoryForTest(factory);

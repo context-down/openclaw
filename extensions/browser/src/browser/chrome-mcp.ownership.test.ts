@@ -128,10 +128,10 @@ function createMarkerSession(options: { existingPage?: boolean; navigateError?: 
     client: {
       callTool,
       listTools: vi.fn(),
-      close: vi.fn(async () => {}),
       connect: vi.fn(),
     },
     transport: { pid: 123 },
+    closeConnection: vi.fn(async () => {}),
     ready: Promise.resolve(),
     routing: {
       sessionNonce: "000000000001",
