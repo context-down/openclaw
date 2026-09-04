@@ -448,6 +448,11 @@ describe("plugin management Gateway handlers", () => {
       family: "code-plugin",
       isOfficial: false,
       categories: ["memory"],
+      topics: ["retrieval"],
+      configFields: [],
+      mcpServers: [],
+      skills: [],
+      versions: [{ version: "1.0.0", createdAt: 100, changelog: "", tags: ["latest"] }],
     });
     managementMocks.list.mockResolvedValue({
       plugins: [],
@@ -462,6 +467,12 @@ describe("plugin management Gateway handlers", () => {
       plugin: {
         id: "ch_bWVtb3J5LXBsdXM",
         local: { present: false, action: "unavailable" },
+      },
+      detail: {
+        origin: "clawhub",
+        packageName: "memory-plus",
+        topics: ["retrieval"],
+        versions: [{ version: "1.0.0" }],
       },
     });
   });
